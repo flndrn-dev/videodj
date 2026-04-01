@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { X } from 'lucide-react'
 import type { DeckPanelHandle } from '@/components/deck/DeckPanel'
 
@@ -220,8 +220,11 @@ export function StreamPreview({ onClose, deckARef, deckBRef, crossfader, nowPlay
   }, [draggingCam])
 
   // ---------------------------------------------------------------------------
-  // Pop out to new window
+  // Pop out to new window — mirrors canvas to a second canvas in the popup
   // ---------------------------------------------------------------------------
+  const popupCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const popupRafRef = useRef(0)
+
   const popOut = useCallback(() => {
     if (poppedOut || !canvasRef.current) return
     const popup = window.open('', 'StreamPreview', 'width=1920,height=1080,menubar=no,toolbar=no')
@@ -231,22 +234,31 @@ export function StreamPreview({ onClose, deckARef, deckBRef, crossfader, nowPlay
     popup.document.title = 'videoDJ.Studio — Stream Preview'
     popup.document.body.style.cssText = 'margin:0;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center;height:100vh'
 
-    // Move canvas to popup
-    const canvas = canvasRef.current
-    popup.document.body.appendChild(canvas)
-    canvas.style.width = '100%'
-    canvas.style.height = '100%'
-    canvas.style.objectFit = 'contain'
+    // Create a mirror canvas in the popup (don't move the React-managed one)
+    const mirrorCanvas = popup.document.createElement('canvas')
+    mirrorCanvas.width = 1920
+    mirrorCanvas.height = 1080
+    mirrorCanvas.style.cssText = 'width:100%;height:100%;object-fit:contain'
+    popup.document.body.appendChild(mirrorCanvas)
+    popupCanvasRef.current = mirrorCanvas
+
+    // Mirror loop: copy source canvas to popup canvas every frame
+    function mirrorFrame() {
+      const src = canvasRef.current
+      const dst = popupCanvasRef.current
+      if (src && dst) {
+        const ctx = dst.getContext('2d')
+        if (ctx) ctx.drawImage(src, 0, 0)
+      }
+      popupRafRef.current = requestAnimationFrame(mirrorFrame)
+    }
+    popupRafRef.current = requestAnimationFrame(mirrorFrame)
 
     setPoppedOut(true)
 
     popup.onbeforeunload = () => {
-      // Move canvas back
-      if (previewRef.current && canvas) {
-        previewRef.current.prepend(canvas)
-        canvas.style.width = '100%'
-        canvas.style.height = '100%'
-      }
+      cancelAnimationFrame(popupRafRef.current)
+      popupCanvasRef.current = null
       setPoppedOut(false)
       popupRef.current = null
     }
@@ -452,13 +464,56 @@ export function StreamPreview({ onClose, deckARef, deckBRef, crossfader, nowPlay
           }}>
             <div style={{
               padding: '8px 12px', borderBottom: '1px solid #1a1a2e',
-              fontSize: 10, fontWeight: 700, color: '#9146FF',
-              fontFamily: 'var(--font-mono)', letterSpacing: 1,
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
-              TWITCH CHAT
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#9146FF', fontFamily: 'var(--font-mono)', letterSpacing: 1 }}>
+                TWITCH CHAT
+              </span>
+              {!localStorage.getItem('twitch_token') ? (
+                <button
+                  onClick={() => window.location.href = '/api/twitch?action=login'}
+                  style={{
+                    fontSize: 9, fontWeight: 700, padding: '3px 10px', borderRadius: 4,
+                    background: '#9146FF', color: '#fff', border: 'none', cursor: 'pointer',
+                  }}
+                >
+                  Connect
+                </button>
+              ) : (
+                <span style={{ fontSize: 9, color: '#4ade80', fontWeight: 600 }}>
+                  {localStorage.getItem('twitch_username') || 'Connected'}
+                </span>
+              )}
             </div>
+
             <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {twitchMessages.length === 0 ? (
+              {!localStorage.getItem('twitch_token') ? (
+                <div style={{ padding: '12px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <p style={{ fontSize: 11, color: '#888', lineHeight: 1.5, margin: 0 }}>
+                    Connect your Twitch account to read and respond to chat while streaming.
+                  </p>
+                  <div style={{ fontSize: 10, color: '#555', lineHeight: 1.6 }}>
+                    <strong style={{ color: '#9146FF' }}>Setup:</strong>
+                    <ol style={{ margin: '6px 0 0', paddingLeft: 16 }}>
+                      <li>Go to <a href="https://dev.twitch.tv/console/apps" target="_blank" rel="noopener noreferrer" style={{ color: '#9146FF' }}>dev.twitch.tv/console/apps</a></li>
+                      <li>Click &quot;Register Your Application&quot;</li>
+                      <li>Name: <code style={{ color: '#ffff00', fontSize: 9 }}>videoDJ.Studio</code></li>
+                      <li>OAuth Redirect URL: <code style={{ color: '#ffff00', fontSize: 9 }}>http://localhost:3030/api/twitch</code></li>
+                      <li>Category: Broadcasting Suite</li>
+                      <li>Copy your Client ID and Client Secret</li>
+                      <li>Add to your <code style={{ color: '#ffff00', fontSize: 9 }}>.env</code> file:
+                        <pre style={{ background: '#0a0a14', padding: 6, borderRadius: 4, margin: '4px 0', fontSize: 9, color: '#888', whiteSpace: 'pre-wrap' }}>
+{`TWITCH_CLIENT_ID=your_client_id
+TWITCH_CLIENT_SECRET=your_secret
+TWITCH_REDIRECT_URI=http://localhost:3030/api/twitch`}
+                        </pre>
+                      </li>
+                      <li>Restart the dev server</li>
+                      <li>Click &quot;Connect&quot; above</li>
+                    </ol>
+                  </div>
+                </div>
+              ) : twitchMessages.length === 0 ? (
                 <span style={{ color: '#333', fontSize: 11 }}>No chat messages yet...</span>
               ) : (
                 twitchMessages.map((msg, i) => (
