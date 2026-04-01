@@ -488,30 +488,13 @@ export function StreamPreview({ onClose, deckARef, deckBRef, crossfader, nowPlay
 
             <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
               {!localStorage.getItem('twitch_token') ? (
-                <div style={{ padding: '12px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <p style={{ fontSize: 11, color: '#888', lineHeight: 1.5, margin: 0 }}>
-                    Connect your Twitch account to read and respond to chat while streaming.
+                <div style={{ padding: '16px 0', textAlign: 'center' }}>
+                  <p style={{ fontSize: 11, color: '#888', lineHeight: 1.5, margin: '0 0 12px' }}>
+                    Connect your Twitch account in Settings to enable chat.
                   </p>
-                  <div style={{ fontSize: 10, color: '#555', lineHeight: 1.6 }}>
-                    <strong style={{ color: '#9146FF' }}>Setup:</strong>
-                    <ol style={{ margin: '6px 0 0', paddingLeft: 16 }}>
-                      <li>Go to <a href="https://dev.twitch.tv/console/apps" target="_blank" rel="noopener noreferrer" style={{ color: '#9146FF' }}>dev.twitch.tv/console/apps</a></li>
-                      <li>Click &quot;Register Your Application&quot;</li>
-                      <li>Name: <code style={{ color: '#ffff00', fontSize: 9 }}>videoDJ.Studio</code></li>
-                      <li>OAuth Redirect URL: <code style={{ color: '#ffff00', fontSize: 9 }}>http://localhost:3030/api/twitch</code></li>
-                      <li>Category: Broadcasting Suite</li>
-                      <li>Copy your Client ID and Client Secret</li>
-                      <li>Add to your <code style={{ color: '#ffff00', fontSize: 9 }}>.env</code> file:
-                        <pre style={{ background: '#0a0a14', padding: 6, borderRadius: 4, margin: '4px 0', fontSize: 9, color: '#888', whiteSpace: 'pre-wrap' }}>
-{`TWITCH_CLIENT_ID=your_client_id
-TWITCH_CLIENT_SECRET=your_secret
-TWITCH_REDIRECT_URI=http://localhost:3030/api/twitch`}
-                        </pre>
-                      </li>
-                      <li>Restart the dev server</li>
-                      <li>Click &quot;Connect&quot; above</li>
-                    </ol>
-                  </div>
+                  <p style={{ fontSize: 10, color: '#555' }}>
+                    Settings &rarr; Twitch Streaming &rarr; Connect
+                  </p>
                 </div>
               ) : twitchMessages.length === 0 ? (
                 <span style={{ color: '#333', fontSize: 11 }}>No chat messages yet...</span>

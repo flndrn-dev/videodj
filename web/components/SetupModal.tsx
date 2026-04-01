@@ -496,10 +496,220 @@ export function SetupModal({ onClose, onLibraryLoaded, onAgentConnected }: Setup
                   </div>
                 )}
               </div>
+              {/* ── Section: Twitch Streaming ──────────────────────── */}
+              <TwitchSetupSection />
             </motion.div>
           )}
         </AnimatePresence>
       </motion.div>
     </motion.div>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Twitch Setup Section
+// ---------------------------------------------------------------------------
+
+function TwitchSetupSection() {
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
+  const [twitchStatus, setTwitchStatus] = useState<'disconnected' | 'saving' | 'connected'>('disconnected')
+  const [twitchUser, setTwitchUser] = useState('')
+  const [twitchError, setTwitchError] = useState('')
+
+  // Check if already connected
+  useEffect(() => {
+    const token = localStorage.getItem('twitch_token')
+    const username = localStorage.getItem('twitch_username')
+    if (token && username) {
+      setTwitchStatus('connected')
+      setTwitchUser(username)
+    }
+  }, [])
+
+  // Handle OAuth redirect params (when returning from Twitch login)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('twitch_connected') === 'true') {
+      localStorage.setItem('twitch_token', params.get('twitch_token') || '')
+      localStorage.setItem('twitch_username', params.get('twitch_username') || '')
+      localStorage.setItem('twitch_channel', params.get('twitch_channel') || '')
+      localStorage.setItem('twitch_stream_key', params.get('twitch_stream_key') || '')
+      localStorage.setItem('twitch_user_id', params.get('twitch_user_id') || '')
+      setTwitchStatus('connected')
+      setTwitchUser(params.get('twitch_username') || '')
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+    if (params.get('twitch_error')) {
+      setTwitchError(params.get('twitch_error') || 'Connection failed')
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
+
+  async function handleSaveTwitchCredentials() {
+    if (!clientId.trim() || !clientSecret.trim()) return
+    setTwitchStatus('saving')
+    setTwitchError('')
+
+    try {
+      // Save credentials to .env via settings API
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          TWITCH_CLIENT_ID: clientId.trim(),
+          TWITCH_CLIENT_SECRET: clientSecret.trim(),
+          TWITCH_REDIRECT_URI: 'http://localhost:3030/api/twitch',
+        }),
+      })
+      const data = await res.json()
+      if (data.connected !== undefined || data.saved) {
+        // Credentials saved — now redirect to Twitch OAuth
+        window.location.href = '/api/twitch?action=login'
+      } else {
+        setTwitchStatus('disconnected')
+        setTwitchError('Failed to save credentials')
+      }
+    } catch {
+      setTwitchStatus('disconnected')
+      setTwitchError('Network error')
+    }
+  }
+
+  function handleDisconnectTwitch() {
+    localStorage.removeItem('twitch_token')
+    localStorage.removeItem('twitch_username')
+    localStorage.removeItem('twitch_channel')
+    localStorage.removeItem('twitch_stream_key')
+    localStorage.removeItem('twitch_user_id')
+    setTwitchStatus('disconnected')
+    setTwitchUser('')
+  }
+
+  return (
+    <div>
+      <div style={{
+        fontSize: 9, fontWeight: 700, letterSpacing: 2, color: '#555570',
+        textTransform: 'uppercase', marginBottom: 10,
+      }}>
+        Twitch Streaming
+      </div>
+
+      {twitchStatus === 'connected' ? (
+        <div style={{
+          padding: 16, borderRadius: 14,
+          background: 'rgba(145,70,255,0.06)', border: '1px solid rgba(145,70,255,0.25)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 24, height: 24, borderRadius: 6, background: '#9146FF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 12 }}>
+              T
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: '#9146FF' }}>
+                Connected as {twitchUser}
+              </div>
+              <div style={{ fontSize: 10, color: '#6666aa', marginTop: 2 }}>
+                Twitch chat and streaming are ready
+              </div>
+            </div>
+            <motion.button
+              onClick={handleDisconnectTwitch}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              style={{
+                padding: '5px 12px', borderRadius: 6,
+                background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)',
+                color: '#f87171', fontSize: 10, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              Disconnect
+            </motion.button>
+          </div>
+        </div>
+      ) : (
+        <div style={{
+          padding: 16, borderRadius: 14,
+          background: '#1a1a2a', border: '1px solid #2a2a3a',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+            <div style={{ width: 24, height: 24, borderRadius: 6, background: '#9146FF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 12, color: '#fff', fontWeight: 800 }}>
+              T
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: '#e0e0f0' }}>Connect Twitch</div>
+              <div style={{ fontSize: 10, color: '#6666aa', marginTop: 2 }}>
+                Stream to Twitch with chat integration
+              </div>
+            </div>
+          </div>
+
+          {/* Step 1 instructions */}
+          <div style={{ fontSize: 10, color: '#888', lineHeight: 1.6, marginBottom: 12, padding: '8px 10px', background: '#14141f', borderRadius: 8, border: '1px solid #1a1a2e' }}>
+            <strong style={{ color: '#9146FF' }}>Step 1:</strong> Create a Twitch app at{' '}
+            <a href="https://dev.twitch.tv/console/apps" target="_blank" rel="noopener noreferrer" style={{ color: '#9146FF' }}>
+              dev.twitch.tv/console/apps
+            </a>
+            <br />
+            Set OAuth Redirect URL to: <code style={{ color: '#ffff00', fontSize: 9 }}>http://localhost:3030/api/twitch</code>
+            <br />
+            Category: <strong>Broadcasting Suite</strong>
+          </div>
+
+          {/* Step 2: credentials */}
+          <div style={{ fontSize: 10, color: '#888', marginBottom: 8 }}>
+            <strong style={{ color: '#9146FF' }}>Step 2:</strong> Enter your Client ID and Secret
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input
+              type="text"
+              value={clientId}
+              onChange={e => setClientId(e.target.value)}
+              placeholder="Client ID"
+              style={twitchInputStyle}
+            />
+            <input
+              type="password"
+              value={clientSecret}
+              onChange={e => setClientSecret(e.target.value)}
+              placeholder="Client Secret"
+              style={twitchInputStyle}
+            />
+            <motion.button
+              onClick={handleSaveTwitchCredentials}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              disabled={!clientId.trim() || !clientSecret.trim() || twitchStatus === 'saving'}
+              style={{
+                padding: '10px 0', borderRadius: 8, width: '100%',
+                background: clientId.trim() && clientSecret.trim() ? '#9146FF' : '#2a2a3e',
+                color: clientId.trim() && clientSecret.trim() ? '#fff' : '#555',
+                fontWeight: 700, fontSize: 12, border: 'none', cursor: 'pointer',
+                opacity: twitchStatus === 'saving' ? 0.5 : 1,
+              }}
+            >
+              {twitchStatus === 'saving' ? 'Connecting...' : 'Connect with Twitch'}
+            </motion.button>
+          </div>
+
+          {twitchError && (
+            <div style={{
+              marginTop: 8, padding: '8px 12px', borderRadius: 8,
+              background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.2)',
+            }}>
+              <p style={{ fontSize: 11, color: '#f87171', margin: 0 }}>{twitchError}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const twitchInputStyle: React.CSSProperties = {
+  background: '#14141f', border: '1px solid #2a2a3e',
+  borderRadius: 8, padding: '8px 12px', color: '#e0e0f0',
+  fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none',
+  width: '100%',
 }

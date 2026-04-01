@@ -33,6 +33,16 @@ function writeEnv(env: Record<string, string>): void {
     `AGENT_MODEL=${env.AGENT_MODEL || 'claude-3-haiku-20240307'}`,
     '',
   ]
+
+  // Twitch credentials (only write if set)
+  if (env.TWITCH_CLIENT_ID) {
+    lines.push('# Twitch — get credentials at https://dev.twitch.tv/console/apps')
+    lines.push(`TWITCH_CLIENT_ID=${env.TWITCH_CLIENT_ID}`)
+    lines.push(`TWITCH_CLIENT_SECRET=${env.TWITCH_CLIENT_SECRET || ''}`)
+    lines.push(`TWITCH_REDIRECT_URI=${env.TWITCH_REDIRECT_URI || 'http://localhost:3030/api/twitch'}`)
+    lines.push('')
+  }
+
   fs.writeFileSync(ENV_PATH, lines.join('\n'), 'utf8')
 }
 
@@ -65,8 +75,22 @@ export async function POST(req: NextRequest) {
     if (body.AGENT_MODEL !== undefined) {
       env.AGENT_MODEL = body.AGENT_MODEL
     }
+    if (body.TWITCH_CLIENT_ID !== undefined) {
+      env.TWITCH_CLIENT_ID = body.TWITCH_CLIENT_ID
+    }
+    if (body.TWITCH_CLIENT_SECRET !== undefined) {
+      env.TWITCH_CLIENT_SECRET = body.TWITCH_CLIENT_SECRET
+    }
+    if (body.TWITCH_REDIRECT_URI !== undefined) {
+      env.TWITCH_REDIRECT_URI = body.TWITCH_REDIRECT_URI
+    }
 
     writeEnv(env)
+
+    // If Twitch credentials were saved, return success immediately (OAuth will redirect)
+    if (body.TWITCH_CLIENT_ID) {
+      return NextResponse.json({ success: true, saved: true })
+    }
 
     // Test the API key if one was provided
     if (body.CLAUDE_API_KEY && body.CLAUDE_API_KEY !== 'your-api-key-here') {
