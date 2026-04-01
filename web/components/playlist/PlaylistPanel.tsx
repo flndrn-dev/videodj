@@ -332,6 +332,94 @@ function TrackRow({
 }
 
 // ---------------------------------------------------------------------------
+// Virtual scroll — only renders visible rows for large libraries
+// ---------------------------------------------------------------------------
+
+const ROW_HEIGHT = 44 // px per row
+const OVERSCAN = 8    // extra rows above/below viewport
+
+function VirtualTrackList({ tracks, searchQuery, onLoadTrack, onUpdateTrack, onDeleteTrack, onDragStart }: {
+  tracks: Track[]
+  searchQuery: string
+  onLoadTrack: (deck: 'A' | 'B', track: Track) => void
+  onUpdateTrack: (id: string, updates: Partial<Track>) => void
+  onDeleteTrack: (id: string) => void
+  onDragStart: (e: DragEvent<HTMLDivElement>, track: Track) => void
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [scrollTop, setScrollTop] = useState(0)
+  const [containerHeight, setContainerHeight] = useState(400)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) setContainerHeight(entry.contentRect.height)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const handleScroll = useCallback(() => {
+    if (containerRef.current) setScrollTop(containerRef.current.scrollTop)
+  }, [])
+
+  if (tracks.length === 0) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+        {searchQuery ? (
+          <>
+            <SearchIcon size={32} style={{ color: '#333348' }} />
+            <span style={{ fontSize: 12, color: '#333348' }}>No results for &ldquo;{searchQuery}&rdquo;</span>
+          </>
+        ) : (
+          <>
+            <FolderOpenIcon size={32} style={{ color: '#333348' }} />
+            <span style={{ fontSize: 12, color: '#333348' }}>No videos loaded — open a folder to get started</span>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  const totalHeight = tracks.length * ROW_HEIGHT
+  const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
+  const endIdx = Math.min(tracks.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + OVERSCAN)
+
+  return (
+    <div
+      ref={containerRef}
+      onScroll={handleScroll}
+      style={{ flex: 1, overflowY: 'auto' }}
+    >
+      <div style={{ height: totalHeight, position: 'relative' }}>
+        {tracks.slice(startIdx, endIdx).map((track, i) => (
+          <div
+            key={track.id}
+            style={{
+              position: 'absolute',
+              top: (startIdx + i) * ROW_HEIGHT,
+              left: 0,
+              right: 0,
+              height: ROW_HEIGHT,
+            }}
+          >
+            <TrackRow
+              track={track}
+              index={startIdx + i}
+              onLoadTrack={onLoadTrack}
+              onUpdateTrack={onUpdateTrack}
+              onDeleteTrack={onDeleteTrack}
+              onDragStart={onDragStart}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Panel
 // ---------------------------------------------------------------------------
 
@@ -496,43 +584,15 @@ export function PlaylistPanel({
         <span style={{ width: 52, fontSize: 8, color: '#333348', fontFamily: 'var(--font-mono)' }}></span>{/* actions */}
       </div>
 
-      {/* Scrollable track list */}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        {tracks.length === 0 ? (
-          <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            justifyContent: 'center', height: '100%', gap: 12,
-          }}>
-            {searchQuery ? (
-              <>
-                <SearchIcon size={32} style={{ color: '#333348' }} />
-                <span style={{ fontSize: 12, color: '#333348' }}>
-                  No results for &ldquo;{searchQuery}&rdquo;
-                </span>
-              </>
-            ) : (
-              <>
-                <FolderOpenIcon size={32} style={{ color: '#333348' }} />
-                <span style={{ fontSize: 12, color: '#333348' }}>
-                  No videos loaded — open a folder to get started
-                </span>
-              </>
-            )}
-          </div>
-        ) : (
-          tracks.map((track, i) => (
-            <TrackRow
-              key={track.id}
-              track={track}
-              index={i}
-              onLoadTrack={onLoadTrack}
-              onUpdateTrack={onUpdateTrack}
-              onDeleteTrack={onDeleteTrack}
-              onDragStart={handleDragStart}
-            />
-          ))
-        )}
-      </div>
+      {/* Scrollable track list — virtualized for large libraries */}
+      <VirtualTrackList
+        tracks={tracks}
+        searchQuery={searchQuery}
+        onLoadTrack={onLoadTrack}
+        onUpdateTrack={onUpdateTrack}
+        onDeleteTrack={onDeleteTrack}
+        onDragStart={handleDragStart}
+      />
     </motion.div>
   )
 }
