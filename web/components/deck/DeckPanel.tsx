@@ -8,6 +8,9 @@ import { Disc3Icon } from '@/components/ui/disc-3'
 import { Waveform } from '@/components/deck/Waveform'
 import type { DeckState, Track } from '@/app/hooks/usePlayerStore'
 import { AudioEngine, type EQState } from '@/app/lib/audioEngine'
+import { LoopController } from '@/app/lib/loopSystem'
+import { hotcueManager } from '@/app/lib/hotcues'
+import { TempoController } from '@/app/lib/tempoSync'
 
 // ---------------------------------------------------------------------------
 // EQ Slider — styled to match the crossfader (custom pointer-based)
@@ -164,15 +167,52 @@ export interface DeckPanelHandle {
   setEQ: (band: 'high' | 'mid' | 'low', db: number) => void
   toggleKill: (band: 'high' | 'mid' | 'low') => void
   getEQ: () => EQState
+  getLoopController: () => LoopController
+  getTempoController: () => TempoController
 }
 
 export const DeckPanel = forwardRef<DeckPanelHandle, DeckPanelProps>(function DeckPanel({ deckId, deck, isActive, volume, initialTime, onPlayPause, onCue, onEject, onLoadTrack, onTimeUpdate }, ref) {
   const accent = deckId === 'A' ? '#45b1e8' : '#ef4444'
   const videoRef = useRef<HTMLVideoElement>(null)
   const audioEngineRef = useRef(new AudioEngine())
+  const loopRef = useRef(new LoopController())
+  const tempoRef = useRef(new TempoController())
+  const [loopActive, setLoopActive] = useState(false)
+  const [hotcueSlots, setHotcueSlots] = useState<(number | null)[]>([null, null, null, null])
+
+  // Connect loop + tempo controllers to video element
+  useEffect(() => {
+    const vid = videoRef.current
+    if (vid) {
+      loopRef.current.attach(vid)
+      tempoRef.current.setOnRateChange(rate => { if (vid) vid.playbackRate = rate })
+    }
+    return () => { loopRef.current.detach() }
+  }, [deck.track?.videoUrl])
+
+  // Set BPM on tempo controller when track loads
+  useEffect(() => {
+    if (deck.track?.bpm) tempoRef.current.setOriginalBpm(deck.track.bpm)
+  }, [deck.track?.bpm])
+
+  // Load hotcues for current track
+  useEffect(() => {
+    if (deck.track?.id) {
+      const cues = hotcueManager.getCues(deck.track.id)
+      setHotcueSlots(prev => {
+        const slots: (number | null)[] = [null, null, null, null]
+        cues.slice(0, 4).forEach((c, i) => { slots[i] = c.time })
+        return slots
+      })
+    } else {
+      setHotcueSlots([null, null, null, null])
+    }
+  }, [deck.track?.id])
 
   useImperativeHandle(ref, () => ({
     getVideoElement: () => videoRef.current,
+    getLoopController: () => loopRef.current,
+    getTempoController: () => tempoRef.current,
     setPlaybackRate: (rate: number) => {
       if (videoRef.current) {
         videoRef.current.playbackRate = rate
@@ -509,6 +549,97 @@ export const DeckPanel = forwardRef<DeckPanelHandle, DeckPanelProps>(function De
           <div style={{ fontSize: 11, color: '#333348' }}>Drop a video here</div>
         )}
       </div>
+
+      {/* Loop + Hotcue + Pitch controls */}
+      {deck.track && (
+        <div style={{ display: 'flex', gap: 6, zIndex: 1, flexShrink: 0, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+          {/* Loop buttons */}
+          <div style={{ display: 'flex', gap: 3 }}>
+            {[1, 2, 4, 8].map(bars => (
+              <button
+                key={bars}
+                onClick={() => {
+                  loopRef.current.autoLoop(currentTime, deck.track?.bpm || 120, bars)
+                  setLoopActive(true)
+                }}
+                style={{
+                  fontSize: 8, fontWeight: 800, padding: '3px 6px', borderRadius: 3,
+                  background: loopActive && loopRef.current.getState().barLength === bars ? accent : 'transparent',
+                  color: loopActive && loopRef.current.getState().barLength === bars ? '#000' : '#555',
+                  border: `1px solid ${loopActive && loopRef.current.getState().barLength === bars ? accent : '#2a2a3e'}`,
+                  cursor: 'pointer',
+                }}
+              >
+                {bars}
+              </button>
+            ))}
+            <button
+              onClick={() => { loopRef.current.deactivate(); setLoopActive(false) }}
+              style={{
+                fontSize: 7, fontWeight: 800, padding: '3px 5px', borderRadius: 3,
+                background: loopActive ? '#ef4444' : 'transparent',
+                color: loopActive ? '#fff' : '#444',
+                border: `1px solid ${loopActive ? '#ef4444' : '#2a2a3e'}`,
+                cursor: 'pointer',
+              }}
+            >
+              {loopActive ? 'EXIT' : 'LOOP'}
+            </button>
+          </div>
+
+          {/* Hotcue buttons (4 slots: A B C D) */}
+          <div style={{ display: 'flex', gap: 3 }}>
+            {['A', 'B', 'C', 'D'].map((label, idx) => {
+              const hasHotcue = hotcueSlots[idx] !== null
+              const colors = ['#ef4444', '#f97316', '#eab308', '#22c55e']
+              return (
+                <button
+                  key={label}
+                  onClick={() => {
+                    if (hasHotcue && videoRef.current) {
+                      // Jump to hotcue
+                      videoRef.current.currentTime = hotcueSlots[idx]!
+                    } else if (deck.track?.id) {
+                      // Set hotcue at current position
+                      hotcueManager.setCue(deck.track.id, idx, currentTime, label)
+                      setHotcueSlots(prev => { const n = [...prev]; n[idx] = currentTime; return n })
+                    }
+                  }}
+                  onContextMenu={e => {
+                    e.preventDefault()
+                    // Right-click to delete
+                    if (deck.track?.id) {
+                      hotcueManager.removeCue(deck.track.id, label)
+                      setHotcueSlots(prev => { const n = [...prev]; n[idx] = null; return n })
+                    }
+                  }}
+                  style={{
+                    fontSize: 8, fontWeight: 900, padding: '3px 6px', borderRadius: 3,
+                    background: hasHotcue ? colors[idx] : 'transparent',
+                    color: hasHotcue ? '#000' : '#444',
+                    border: `1px solid ${hasHotcue ? colors[idx] : '#2a2a3e'}`,
+                    cursor: 'pointer', minWidth: 20, textAlign: 'center',
+                  }}
+                  title={hasHotcue ? `Jump to ${label} (${fmtTime(hotcueSlots[idx]!)}) — right-click to delete` : `Set hotcue ${label}`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Pitch / BPM display */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{
+              fontSize: 8, fontFamily: 'var(--font-mono)', color: '#555',
+            }}>
+              {tempoRef.current.getState().pitch !== 0
+                ? `${tempoRef.current.getState().pitch > 0 ? '+' : ''}${tempoRef.current.getState().pitch.toFixed(1)}%`
+                : ''}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Transport controls — centered */}
       <div style={{

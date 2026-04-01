@@ -88,7 +88,7 @@
 
 ## TIER 3: Pro DJ Features (future)
 
-- [ ] **3.1 3-Band EQ per Deck** — high/mid/low with kill switches (BiquadFilterNode)
+- [x] **3.1 3-Band EQ per Deck** — high/mid/low with kill switches, bypass mode, crossfader-style sliders
 - [ ] **3.2 Effects Rack** — reverb, delay, flanger, filter sweep
 - [ ] **3.3 Loop System** — set loop in/out, auto-loop 1/2/4/8 bars
 - [ ] **3.4 Hotcues** — mark and jump to cue points per track

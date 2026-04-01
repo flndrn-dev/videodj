@@ -59,10 +59,22 @@ export class AudioEngine {
     if (!element) return false
 
     try {
+      // Check if this element already has a MediaElementSource (from a previous AudioEngine instance)
+      // This happens during React strict mode double-mount or hot reload
+      if ((element as HTMLMediaElement & { _audioEngineConnected?: boolean })._audioEngineConnected) {
+        // Element is already routed through Web Audio — just control volume natively
+        this.element = element
+        this.connected = false
+        return false
+      }
+
       this.audioCtx = new AudioContext({ latencyHint: 'interactive' })
       this.element = element
 
       this.source = this.audioCtx.createMediaElementSource(element)
+
+      // Mark element as connected to prevent double-routing
+      ;(element as HTMLMediaElement & { _audioEngineConnected?: boolean })._audioEngineConnected = true
 
       // Gain node for volume control (always in chain)
       this.gainNode = this.audioCtx.createGain()
@@ -101,6 +113,14 @@ export class AudioEngine {
       return true
     } catch (e) {
       console.warn('[AudioEngine] Failed to connect:', e)
+      // If createMediaElementSource failed, the element is likely already connected
+      // to another AudioContext. Close our context to prevent orphaned nodes.
+      if (this.audioCtx) {
+        this.audioCtx.close()
+        this.audioCtx = null
+      }
+      this.source = null
+      this.gainNode = null
       this.connected = false
       return false
     }
