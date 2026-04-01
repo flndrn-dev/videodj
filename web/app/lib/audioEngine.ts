@@ -50,6 +50,7 @@ export class AudioEngine {
 
   private eq: EQState = { ...DEFAULT_EQ }
   private volume = 1
+  private trim = 1 // gain trim (0.5 = -6dB, 1 = 0dB, 2 = +6dB)
 
   /**
    * Connect a video/audio element. Starts in BYPASS mode (source → gain → destination).
@@ -172,10 +173,23 @@ export class AudioEngine {
 
   setVolume(vol: number) {
     this.volume = Math.max(0, Math.min(1, vol))
+    this.applyGain()
+  }
+
+  /** Set trim/gain (-6dB to +6dB mapped as 0.5 to 2.0) */
+  setTrim(trim: number) {
+    this.trim = Math.max(0.25, Math.min(2, trim))
+    this.applyGain()
+  }
+
+  getTrim(): number { return this.trim }
+
+  private applyGain() {
+    const gain = this.volume * this.trim
     if (this.gainNode && this.audioCtx) {
-      this.gainNode.gain.setTargetAtTime(this.volume, this.audioCtx.currentTime, 0.02)
+      this.gainNode.gain.setTargetAtTime(gain, this.audioCtx.currentTime, 0.02)
     } else if (this.element) {
-      this.element.volume = this.volume
+      this.element.volume = Math.max(0, Math.min(1, gain))
     }
   }
 

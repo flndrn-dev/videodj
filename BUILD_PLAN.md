@@ -89,11 +89,11 @@
 ## TIER 3: Pro DJ Features (future)
 
 - [x] **3.1 3-Band EQ per Deck** — high/mid/low with kill switches, bypass mode, crossfader-style sliders
-- [ ] **3.2 Effects Rack** — reverb, delay, flanger, filter sweep
-- [ ] **3.3 Loop System** — set loop in/out, auto-loop 1/2/4/8 bars
-- [ ] **3.4 Hotcues** — mark and jump to cue points per track
-- [ ] **3.5 Tempo Sync** — pitch fader per deck, sync button for BPM lock
-- [ ] **3.6 Gain/Trim** — per-deck volume normalization
+- [x] **3.2 Effects Rack** — filter sweep, delay, reverb, flanger (Web Audio nodes, bypass when off)
+- [x] **3.3 Loop System** — auto-loop 1/2/4/8 bars, in/out points, exit button per deck
+- [x] **3.4 Hotcues** — 4 slots (A-D) per deck, click set, click jump, right-click delete
+- [x] **3.5 Tempo Sync** — pitch fader ±8%, sync to other deck BPM, rate controller
+- [x] **3.6 Gain/Trim** — per-deck volume trim (0.25x to 2x) on top of crossfader volume
 
 ---
 
