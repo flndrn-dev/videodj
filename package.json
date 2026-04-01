@@ -1,0 +1,14 @@
+{
+  "name": "djstudio",
+  "version": "1.0.0",
+  "description": "videoDJ.Studio — AI-powered Video DJ & Auto-mixing App",
+  "private": true,
+  "workspaces": ["desktop", "web"],
+  "scripts": {
+    "dev:web": "cd web && npm run dev",
+    "dev:desktop": "cd desktop && npm run dev",
+    "build:web": "cd web && npm run build",
+    "build:desktop": "cd desktop && npm run build",
+    "install:all": "cd web && npm install && cd ../desktop && npm install"
+  }
+}
