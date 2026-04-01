@@ -60,7 +60,7 @@ export class AudioEngine {
     if (!element) return false
 
     try {
-      this.audioCtx = new AudioContext()
+      this.audioCtx = new AudioContext({ latencyHint: 'interactive' })
       this.element = element
 
       // Create source from media element (ONE-TIME operation)

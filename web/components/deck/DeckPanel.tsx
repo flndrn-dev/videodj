@@ -174,7 +174,11 @@ export const DeckPanel = forwardRef<DeckPanelHandle, DeckPanelProps>(function De
   useImperativeHandle(ref, () => ({
     getVideoElement: () => videoRef.current,
     setPlaybackRate: (rate: number) => {
-      if (videoRef.current) videoRef.current.playbackRate = rate
+      if (videoRef.current) {
+        videoRef.current.playbackRate = rate
+        // Disable pitch correction to avoid latency during beatmatching
+        ;(videoRef.current as HTMLVideoElement & { preservesPitch: boolean }).preservesPitch = rate === 1
+      }
     },
     getAudioEngine: () => audioEngineRef.current,
     setEQ: (band: 'high' | 'mid' | 'low', db: number) => audioEngineRef.current.setEQ(band, db),
