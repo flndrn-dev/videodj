@@ -102,19 +102,13 @@ You may receive a subset of the library (for large libraries, the client sends b
 ${JSON.stringify(context, null, 2)}
 
 ## How to respond
-Respond with a JSON object. ALWAYS use this format:
-{
-  "reply": "Your conversational message to the user",
-  "tool_calls": [{ "tool": "tool_name", "args": { ... } }],
-  "preferences": { "userName": "...", "favoriteGenres": [...], "favoriteLanguages": [...] }
-}
+CRITICAL: Your ENTIRE response must be a single JSON object. No text before or after the JSON. No markdown. No explanation. Just the JSON object:
+{"reply": "your message", "tool_calls": [...], "preferences": {...}}
 
-Rules:
-- "reply" is REQUIRED — always include a friendly, helpful message
-- "tool_calls" is optional — only include when the user wants you to DO something
-- "preferences" is optional — only include when the user shares personal info
-- Keep replies concise but informative
-- If the user tells you their name, remember it in preferences
+- "reply" is REQUIRED — your message to the user. Keep it short.
+- "tool_calls" is optional — only when the user wants you to DO something
+- "preferences" is optional — only when the user shares personal info (name, genres, etc.)
+- If the user tells you their name, ALWAYS include preferences with userName
 - Reference actual tracks from the context when discussing the library
 - For /fix commands, return update_track tool calls for EVERY track that needs fixing. Do not skip tracks.
 - For playlist commands, return a reorder_playlist tool call with track_ids in order. Explain your BPM flow, key compatibility, and genre choices.
@@ -230,19 +224,29 @@ async function callClaudeAPI(
         source: 'api',
       }
     } catch {
-      // Strategy 2: text before JSON — find the JSON object in the response
-      const jsonMatch = raw.match(/\{[\s\S]*"reply"\s*:[\s\S]*\}/)
-      if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[0])
-          // Use text before the JSON as prefix (if any), but prefer parsed.reply
-          return {
-            reply: parsed.reply || '',
-            toolCalls: (parsed.tool_calls || []).map((c: { tool: string; args?: Record<string, unknown> }) => ({ tool: c.tool, args: c.args })),
-            preferences: parsed.preferences,
-            source: 'api',
-          }
-        } catch { /* fall through */ }
+      // Strategy 2: find a JSON block containing "reply" — try bracket matching
+      const jsonStart = raw.indexOf('{"reply"')
+      const altStart = raw.indexOf('{ "reply"')
+      const start = jsonStart >= 0 ? jsonStart : altStart
+      if (start >= 0) {
+        // Find matching closing brace by counting brackets
+        let depth = 0
+        let end = -1
+        for (let i = start; i < raw.length; i++) {
+          if (raw[i] === '{') depth++
+          else if (raw[i] === '}') { depth--; if (depth === 0) { end = i + 1; break } }
+        }
+        if (end > start) {
+          try {
+            const parsed = JSON.parse(raw.slice(start, end))
+            return {
+              reply: parsed.reply || '',
+              toolCalls: (parsed.tool_calls || []).map((c: { tool: string; args?: Record<string, unknown> }) => ({ tool: c.tool, args: c.args })),
+              preferences: parsed.preferences,
+              source: 'api',
+            }
+          } catch { /* fall through */ }
+        }
       }
 
       // Strategy 3: no JSON at all — treat as plain text reply
@@ -282,11 +286,11 @@ export async function POST(req: NextRequest) {
         content: `[SYSTEM: The user just connected. Introduce yourself in 2 SHORT sentences max. Say your name is Linus, ask their name and what music they're into. Nothing else. No feature lists, no suggestions, no offers to help. Just the intro.]`,
       }]
     } else if (conversationHistory && conversationHistory.length > 0) {
-      // Continue conversation with limited history (last 10 messages, truncate long ones)
-      const recentHistory = conversationHistory.slice(-10).map((m: { role: string; text: string }) => ({
+      // Continue conversation with limited history (last 6 messages, truncate long ones)
+      const recentHistory = conversationHistory.slice(-6).map((m: { role: string; text: string }) => ({
         role: m.role === 'agent' ? 'assistant' : 'user',
-        // Truncate agent replies that contain JSON dumps to avoid bloating context
-        content: m.role === 'agent' && m.text.length > 500 ? m.text.slice(0, 200) + '...[truncated]' : m.text,
+        // Truncate long messages to avoid blowing context window
+        content: m.text.length > 300 ? m.text.slice(0, 150) + '...' : m.text,
       }))
       messages = [...recentHistory, { role: 'user', content: text }]
     } else {

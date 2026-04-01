@@ -17,7 +17,7 @@ import { automixController } from '@/app/lib/automixEngine'
 import { detectBeatGrid, computeEnergyPerBeat, detectSections, findMixInPoint, findMixOutPoint } from '@/app/lib/beatGrid'
 import { getTrackBlob } from '@/app/lib/db'
 import { setPendingBatch, getPendingBatch, clearPendingBatch, applyPendingBatch, isConfirmation, isCancellation, buildPendingSummary } from '@/app/lib/pendingUpdates'
-import { StreamDashboard } from '@/components/StreamDashboard'
+import { StreamPreview } from '@/components/StreamPreview'
 import { RadioIcon, type RadioIconHandle } from '@/components/ui/radio'
 import { PlayIcon, type PlayIconHandle } from '@/components/ui/play'
 import { LiaRandomSolid } from 'react-icons/lia'
@@ -41,6 +41,12 @@ export default function Home() {
   const [showStream, setShowStream] = useState(false)
   const [isLive, setIsLive] = useState(false)
   const [eqVersion, setEqVersion] = useState(0) // bumped on kill toggle to force re-render
+  const [micVolume, setMicVolume] = useState(0.8)
+  const [micMuted, setMicMuted] = useState(true)
+  const [micDucking, setMicDucking] = useState(false)
+  const micStreamRef = useRef<MediaStream | null>(null)
+  const micGainRef = useRef<GainNode | null>(null)
+  const micContextRef = useRef<AudioContext | null>(null)
   const automixIconRef = useRef<RadioIconHandle>(null)
   const autoplayIconRef = useRef<PlayIconHandle>(null)
   const commandBarRef = useRef<CommandBarHandle>(null)
@@ -557,7 +563,8 @@ export default function Home() {
           const batchForStore = updates.map(u => ({ id: u.trackId, changes: u.changes as Partial<Track> }))
           batchUpdateTracks(batchForStore)
           await batchUpdateTrackMeta(batchForStore)
-          return `Applied ${updates.length} updates to your library.`
+          buildPlaylist() // refresh playlist view with updated metadata
+          return `Updated ${updates.length} tracks in your library and database.`
         }
         return 'No pending changes to apply.'
       }
@@ -593,9 +600,16 @@ export default function Home() {
     }
 
     // --- Pass-through to Claude API ---
-    const context = buildContext()
+    const isSlashCommand = text.trim().startsWith('/')
     const isFixAll = text.trim().toLowerCase().startsWith('/fix-all')
     const isFixCommand = text.trim().toLowerCase().startsWith('/fix-')
+
+    // Only send full library for slash commands that need it — slim context for chat
+    const context = isSlashCommand ? buildContext() : {
+      ...buildContext(),
+      library: library.slice(0, 10).map(t => ({ id: t.id, title: t.title, artist: t.artist, genre: t.genre })),
+      librarySize: library.length,
+    }
 
     // For large libraries with fix commands, batch the API calls
     const BATCH_SIZE = 25
@@ -917,6 +931,118 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Volume controls — Deck A, Deck B, Mic */}
+          <div style={{ display: 'flex', width: '100%', gap: 8, alignItems: 'center' }}>
+            {/* Deck A vol */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+              <span style={{ fontSize: 7, color: '#45b1e8', fontFamily: 'var(--font-mono)', letterSpacing: 1 }}>VOL A</span>
+              <input
+                type="range" min={0} max={100} value={Math.round(volumeA * 100)}
+                onChange={e => { const v = Number(e.target.value) / 100; setCrossfader(v <= volumeB ? Math.round((1 - v) * 50) : crossfader) }}
+                style={{ width: '100%', height: 3, accentColor: '#45b1e8' }}
+                disabled
+                title="Controlled by crossfader"
+              />
+              <span style={{ fontSize: 8, color: '#555570', fontFamily: 'var(--font-mono)' }}>{Math.round(volumeA * 100)}%</span>
+            </div>
+
+            {/* Mic */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+              <span style={{ fontSize: 7, color: micMuted ? '#555570' : '#ffff00', fontFamily: 'var(--font-mono)', letterSpacing: 1 }}>MIC</span>
+              <input
+                type="range" min={0} max={100} value={Math.round(micVolume * 100)}
+                onChange={e => {
+                  const v = Number(e.target.value) / 100
+                  setMicVolume(v)
+                  if (micGainRef.current && micContextRef.current) {
+                    micGainRef.current.gain.setTargetAtTime(micMuted ? 0 : v, micContextRef.current.currentTime, 0.02)
+                  }
+                }}
+                style={{ width: '100%', height: 3, accentColor: '#ffff00' }}
+              />
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  onClick={async () => {
+                    if (micMuted) {
+                      // Connect mic
+                      try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+                        micStreamRef.current = stream
+                        const ctx = new AudioContext()
+                        micContextRef.current = ctx
+                        const source = ctx.createMediaStreamSource(stream)
+                        const gain = ctx.createGain()
+                        gain.gain.value = micVolume
+                        micGainRef.current = gain
+                        source.connect(gain)
+                        gain.connect(ctx.destination)
+                        setMicMuted(false)
+                      } catch { /* mic access denied */ }
+                    } else {
+                      // Mute mic
+                      if (micGainRef.current && micContextRef.current) {
+                        micGainRef.current.gain.setTargetAtTime(0, micContextRef.current.currentTime, 0.02)
+                      }
+                      setMicMuted(true)
+                    }
+                  }}
+                  style={{
+                    fontSize: 7, fontWeight: 800, padding: '2px 6px', borderRadius: 3,
+                    background: micMuted ? 'transparent' : 'rgba(255,255,0,0.15)',
+                    color: micMuted ? '#555' : '#ffff00',
+                    border: `1px solid ${micMuted ? '#2a2a3e' : 'rgba(255,255,0,0.3)'}`,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {micMuted ? 'OFF' : 'ON'}
+                </button>
+                <button
+                  onPointerDown={() => {
+                    // Talk-over: duck music to 30%
+                    setMicDucking(true)
+                    deckAPanelRef.current?.getAudioEngine()?.setVolume(volumeA * 0.3)
+                    deckBPanelRef.current?.getAudioEngine()?.setVolume(volumeB * 0.3)
+                  }}
+                  onPointerUp={() => {
+                    // Release: restore music volume
+                    setMicDucking(false)
+                    deckAPanelRef.current?.getAudioEngine()?.setVolume(volumeA)
+                    deckBPanelRef.current?.getAudioEngine()?.setVolume(volumeB)
+                  }}
+                  onPointerLeave={() => {
+                    if (micDucking) {
+                      setMicDucking(false)
+                      deckAPanelRef.current?.getAudioEngine()?.setVolume(volumeA)
+                      deckBPanelRef.current?.getAudioEngine()?.setVolume(volumeB)
+                    }
+                  }}
+                  style={{
+                    fontSize: 7, fontWeight: 800, padding: '2px 6px', borderRadius: 3,
+                    background: micDucking ? '#ffff00' : 'transparent',
+                    color: micDucking ? '#000' : '#555',
+                    border: `1px solid ${micDucking ? '#ffff00' : '#2a2a3e'}`,
+                    cursor: 'pointer',
+                  }}
+                >
+                  TALK
+                </button>
+              </div>
+            </div>
+
+            {/* Deck B vol */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+              <span style={{ fontSize: 7, color: '#ef4444', fontFamily: 'var(--font-mono)', letterSpacing: 1 }}>VOL B</span>
+              <input
+                type="range" min={0} max={100} value={Math.round(volumeB * 100)}
+                onChange={() => {}}
+                style={{ width: '100%', height: 3, accentColor: '#ef4444' }}
+                disabled
+                title="Controlled by crossfader"
+              />
+              <span style={{ fontSize: 8, color: '#555570', fontFamily: 'var(--font-mono)' }}>{Math.round(volumeB * 100)}%</span>
+            </div>
+          </div>
+
           <div style={{ display: 'flex', gap: 12, width: '100%' }}>
             <motion.button
               onClick={handleStartAutoplay}
@@ -1033,10 +1159,10 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* Stream Dashboard */}
+      {/* Stream Preview */}
       <AnimatePresence>
         {showStream && (
-          <StreamDashboard
+          <StreamPreview
             onClose={() => setShowStream(false)}
             deckARef={deckAPanelRef}
             deckBRef={deckBPanelRef}
@@ -1046,8 +1172,6 @@ export default function Home() {
                 ? {
                     title: (deckAActive ? deckA.track! : deckB.track!).title,
                     artist: (deckAActive ? deckA.track! : deckB.track!).artist,
-                    bpm: (deckAActive ? deckA.track! : deckB.track!).bpm,
-                    key: (deckAActive ? deckA.track! : deckB.track!).key,
                   }
                 : null
             }

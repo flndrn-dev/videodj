@@ -37,23 +37,36 @@ export class TwitchChatClient {
   private reconnectTimer: NodeJS.Timeout | null = null
   private pingInterval: NodeJS.Timeout | null = null
 
+  private oauthToken: string = ''
+  private username: string = ''
+
   /**
-   * Connect to a Twitch channel's chat (read-only, no auth needed)
+   * Connect to a Twitch channel's chat.
+   * If oauthToken is provided, connects authenticated (can send messages).
+   * Otherwise connects anonymously (read-only).
    */
-  connect(channel: string, onMessage: ChatCallback, onStatus?: StatusCallback) {
+  connect(channel: string, onMessage: ChatCallback, onStatus?: StatusCallback, oauthToken?: string, username?: string) {
     this.channel = channel.toLowerCase().replace('#', '')
     this.onMessage = onMessage
     this.onStatus = onStatus || null
+    this.oauthToken = oauthToken || ''
+    this.username = username || ''
 
     this.onStatus?.('connecting')
 
     this.ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443')
 
     this.ws.onopen = () => {
-      // Anonymous login (justinfan + random number)
-      const nick = `justinfan${Math.floor(Math.random() * 100000)}`
       this.ws!.send('CAP REQ :twitch.tv/tags twitch.tv/commands')
-      this.ws!.send(`NICK ${nick}`)
+      if (this.oauthToken && this.username) {
+        // Authenticated — can read and send
+        this.ws!.send(`PASS oauth:${this.oauthToken}`)
+        this.ws!.send(`NICK ${this.username}`)
+      } else {
+        // Anonymous — read only
+        const nick = `justinfan${Math.floor(Math.random() * 100000)}`
+        this.ws!.send(`NICK ${nick}`)
+      }
       this.ws!.send(`JOIN #${this.channel}`)
 
       this.onStatus?.('connected')
@@ -114,9 +127,21 @@ export class TwitchChatClient {
     this.onStatus = null
   }
 
+  /** Send a chat message (requires authenticated connection) */
+  sendMessage(message: string) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.oauthToken) return false
+    this.ws.send(`PRIVMSG #${this.channel} :${message}`)
+    return true
+  }
+
   /** Check if connected */
   isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN
+  }
+
+  /** Check if authenticated (can send) */
+  isAuthenticated(): boolean {
+    return this.isConnected() && !!this.oauthToken
   }
 
   private cleanup() {
