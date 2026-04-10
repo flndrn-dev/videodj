@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { randomBytes } from 'crypto'
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.videodj.studio'
 
 async function getPool() {
   const pg = await import('pg')
@@ -117,6 +120,47 @@ export async function DELETE(
   } catch (err) {
     console.error('User DELETE error:', err)
     return NextResponse.json({ error: 'Failed to delete user' }, { status: 500 })
+  } finally {
+    await pool.end()
+  }
+}
+
+// POST — admin "Login as User" — creates a session + magic link for the app
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const pool = await getPool()
+  try {
+    const { id } = await params
+    const { action } = await req.json()
+
+    if (action !== 'login_as') {
+      return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+    }
+
+    // Verify user exists
+    const userResult = await pool.query('SELECT id, email, name FROM users WHERE id = $1', [id])
+    if (userResult.rowCount === 0) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    // Create a magic link token (valid 5 minutes — just for the redirect)
+    const token = randomBytes(32).toString('hex')
+    const email = userResult.rows[0].email as string
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
+
+    await pool.query(
+      'INSERT INTO magic_links (email, token, expires_at) VALUES ($1, $2, $3)',
+      [email, token, expiresAt.toISOString()]
+    )
+
+    const loginUrl = `${APP_URL}/api/auth/verify?token=${token}`
+
+    return NextResponse.json({ loginUrl, email: userResult.rows[0].email, name: userResult.rows[0].name })
+  } catch (err) {
+    console.error('Login-as error:', err)
+    return NextResponse.json({ error: 'Failed to create login link' }, { status: 500 })
   } finally {
     await pool.end()
   }

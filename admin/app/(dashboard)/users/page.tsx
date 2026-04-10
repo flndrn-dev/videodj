@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Users, UserPlus, Eye, EyeOff, Trash2, Mail, X, Pencil, KeyRound, Copy, Check, PauseCircle, PlayCircle } from 'lucide-react'
+import { Users, UserPlus, Eye, EyeOff, Trash2, Mail, X, Pencil, KeyRound, Copy, Check, PauseCircle, PlayCircle, LogIn } from 'lucide-react'
 
 type Role = 'admin' | 'support_agent' | 'beta_tester' | 'subscriber' | 'bookkeeper'
 
@@ -258,6 +258,21 @@ export default function UsersPage() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-0.5 shrink-0">
+                  <button onClick={async () => {
+                    const res = await fetch(`/api/users/${user.id}`, {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'login_as' }),
+                    })
+                    if (res.ok) {
+                      const data = await res.json()
+                      window.open(data.loginUrl, '_blank')
+                    }
+                  }} title="Login as this user in the App" className="p-2 rounded-lg transition-colors"
+                    style={{ color: 'var(--status-green)' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(34,197,94,0.1)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                    <LogIn size={14} />
+                  </button>
                   <button onClick={() => openEdit(user)} title="Edit user" className="p-2 rounded-lg transition-colors"
                     style={{ color: 'var(--brand-yellow)' }}
                     onMouseEnter={e => { e.currentTarget.style.background = 'var(--brand-yellow-dim)' }}
