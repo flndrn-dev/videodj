@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pg from 'pg'
+import { getClientIp, rateLimitResponse, RATE_LIMITS } from '@/app/lib/rateLimit'
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL!,
@@ -7,6 +8,9 @@ const pool = new pg.Pool({
 })
 
 export async function GET(req: NextRequest) {
+  const limited = rateLimitResponse(getClientIp(req), RATE_LIMITS.public)
+  if (limited) return limited
+
   try {
     const q = req.nextUrl.searchParams.get('q')
     const genre = req.nextUrl.searchParams.get('genre')

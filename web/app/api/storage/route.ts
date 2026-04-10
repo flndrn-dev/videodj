@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { S3Client, PutObjectCommand, GetObjectCommand, HeadBucketCommand, CreateBucketCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { getClientIp, rateLimitResponse, RATE_LIMITS } from '@/app/lib/rateLimit'
 
 const MINIO_ENDPOINT = process.env.MINIO_ENDPOINT || 'https://s3.videodj.studio'
 const MINIO_ACCESS_KEY = process.env.MINIO_ACCESS_KEY || 'videodj_admin'
@@ -40,6 +41,9 @@ async function ensureBucket() {
 
 // POST — get pre-signed upload URL
 export async function POST(req: NextRequest) {
+  const limited = rateLimitResponse(getClientIp(req), RATE_LIMITS.storage)
+  if (limited) return limited
+
   try {
     const { key, contentType, fileSize } = await req.json()
     if (!key || !contentType) {
@@ -70,6 +74,9 @@ export async function POST(req: NextRequest) {
 
 // GET — get pre-signed stream URL
 export async function GET(req: NextRequest) {
+  const limited = rateLimitResponse(getClientIp(req), RATE_LIMITS.storage)
+  if (limited) return limited
+
   try {
     const key = req.nextUrl.searchParams.get('key')
     if (!key) {

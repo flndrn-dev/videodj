@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import pg from 'pg'
+import { getClientIp, rateLimitResponse, RATE_LIMITS } from '@/app/lib/rateLimit'
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL!,
@@ -16,6 +17,9 @@ const pool = new pg.Pool({
 })
 
 export async function GET(req: NextRequest) {
+  const limited = rateLimitResponse(getClientIp(req), RATE_LIMITS.crud)
+  if (limited) return limited
+
   const userId = req.nextUrl.searchParams.get('userId')
   const search = req.nextUrl.searchParams.get('search')
 
@@ -43,6 +47,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimitResponse(getClientIp(req), RATE_LIMITS.crud)
+  if (limited) return limited
+
   try {
     const data = await req.json()
     const {
@@ -88,6 +95,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+  const limited = rateLimitResponse(getClientIp(req), RATE_LIMITS.crud)
+  if (limited) return limited
+
   try {
     const { id, ...updates } = await req.json()
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
@@ -119,6 +129,9 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const limited = rateLimitResponse(getClientIp(req), RATE_LIMITS.crud)
+  if (limited) return limited
+
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 

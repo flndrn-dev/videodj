@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pg from 'pg'
+import { getClientIp, rateLimitResponse, RATE_LIMITS } from '@/app/lib/rateLimit'
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL!,
@@ -17,6 +18,9 @@ async function getUserId(req: NextRequest): Promise<string | null> {
 }
 
 export async function GET(req: NextRequest) {
+  const limited = rateLimitResponse(getClientIp(req), RATE_LIMITS.crud)
+  if (limited) return limited
+
   const userId = await getUserId(req)
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -33,6 +37,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimitResponse(getClientIp(req), RATE_LIMITS.crud)
+  if (limited) return limited
+
   const userId = await getUserId(req)
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -57,6 +64,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const limited = rateLimitResponse(getClientIp(req), RATE_LIMITS.crud)
+  if (limited) return limited
+
   const userId = await getUserId(req)
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 

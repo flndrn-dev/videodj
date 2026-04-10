@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import { loadEnv } from '@/app/lib/loadEnv'
+import { getClientIp, rateLimitResponse, RATE_LIMITS } from '@/app/lib/rateLimit'
 
 // ---------------------------------------------------------------------------
 // Linus system prompt
@@ -458,6 +459,9 @@ async function callOpenAICompatibleAPI(
 // ---------------------------------------------------------------------------
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimitResponse(getClientIp(req), RATE_LIMITS.agent)
+  if (limited) return limited
+
   try {
     const body = await req.json()
     const { text, context, conversationHistory, isWelcome, memories } = body
