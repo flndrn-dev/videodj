@@ -77,7 +77,7 @@ export function onStatusChange(fn: StatusListener): () => void {
 // ---------------------------------------------------------------------------
 
 function maxConcurrency(): number {
-  return mode === 'live' ? 2 : 3
+  return mode === 'live' ? 2 : 5
 }
 
 function hasPrioritySlot(): boolean {
@@ -216,7 +216,7 @@ function fromDbRow(row: Record<string, unknown>): Partial<Track> {
 /** Sync a batch of tracks to PostgreSQL. Skips failures silently. */
 export async function syncMetadata(tracks: Track[]) {
   if (!userId) return
-  const BATCH = 50
+  const BATCH = 100
 
   for (let i = 0; i < tracks.length; i += BATCH) {
     const batch = tracks.slice(i, i + BATCH)

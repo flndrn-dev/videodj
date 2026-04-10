@@ -83,32 +83,43 @@ export async function processFiles(files: File[]) {
 
   const items: { track: Track; blob: Blob }[] = []
 
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i]
-    if (VIDEO_EXTENSIONS.test(file.name)) {
-      const name = file.name.replace(VIDEO_EXTENSIONS, '')
-      state.current = i + 1
-      state.currentFile = name.length > 40 ? name.slice(0, 37) + '...' : name
-      notify()
+  // Filter video files first
+  const videoFiles = files.filter(f => VIDEO_EXTENSIONS.test(f.name))
+  state.total = videoFiles.length
+  notify()
 
+  // Process metadata in parallel batches of 4 for speed
+  const SCAN_CONCURRENCY = 4
+
+  for (let i = 0; i < videoFiles.length; i += SCAN_CONCURRENCY) {
+    const batch = videoFiles.slice(i, i + SCAN_CONCURRENCY)
+    const results = await Promise.allSettled(batch.map(async (file) => {
+      const name = file.name.replace(VIDEO_EXTENSIONS, '')
       const videoUrl = URL.createObjectURL(file)
       const meta = await extractVideoMetadata(file)
-
-      // Generate UUID v4 for PostgreSQL compatibility
       const id = crypto.randomUUID()
-
-      items.push({
+      return {
         track: {
           id, title: name, artist: meta.artist, album: meta.album,
           remixer: '', genre: meta.genre, language: meta.language, bpm: meta.bpm,
           key: meta.key, released: '', duration: meta.duration, timesPlayed: 0,
           thumbnail: meta.thumbnail, file: file.name, videoUrl,
-        },
+          effectiveStartTime: meta.effectiveStartTime,
+          effectiveEndTime: meta.effectiveEndTime,
+          loudness: meta.loudness,
+        } as Track,
         blob: file,
-      })
-      state.count = items.length
-      notify()
+      }
+    }))
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') items.push(result.value)
     }
+
+    state.current = Math.min(i + SCAN_CONCURRENCY, videoFiles.length)
+    state.count = items.length
+    state.currentFile = batch[batch.length - 1].name.replace(VIDEO_EXTENSIONS, '').slice(0, 37)
+    notify()
   }
 
   state.phase = 'saving'
