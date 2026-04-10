@@ -517,10 +517,6 @@ export default function TracksPage() {
                          testStatus[track.id] === 'ok' ? 'Playable' :
                          testStatus[track.id] === 'broken' ? 'Broken' : 'Test'}
                       </button>
-                      <button onClick={() => handleVerify(track)} disabled={verifying.has(track.id)} title="Verify file exists in MinIO"
-                        style={{ padding: '3px 6px', borderRadius: 4, border: '1px solid #2a2a4e', background: 'transparent', color: '#888', cursor: 'pointer', fontSize: 9, opacity: verifying.has(track.id) ? 0.5 : 1 }}>
-                        {verifying.has(track.id) ? '...' : 'Verify'}
-                      </button>
                       <button onClick={() => handleDownload(track)} title="Download file"
                         style={{ padding: '3px 6px', borderRadius: 4, border: '1px solid #2a2a4e', background: 'transparent', color: '#888', cursor: 'pointer', fontSize: 9 }}>
                         <Download size={10} />
