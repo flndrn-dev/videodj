@@ -58,6 +58,20 @@ export default function LinusPage() {
     }
   }, [])
 
+  // Fetch model config directly from the DJ app (admin API can't reach its own routes due to auth middleware)
+  useEffect(() => {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.videodj.studio'
+    fetch(`${appUrl}/api/settings`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) setModelConfig({ provider: data.provider || 'anthropic', model: data.model || '', mode: data.mode || 'apikey' })
+      })
+      .catch(() => {
+        // Fallback defaults
+        setModelConfig({ provider: 'anthropic', model: 'claude-sonnet-4-20250514', mode: 'apikey' })
+      })
+  }, [])
+
   useEffect(() => {
     fetchConversations()
     const interval = setInterval(fetchConversations, 30000)
