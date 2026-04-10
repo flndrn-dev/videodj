@@ -57,7 +57,7 @@ export async function PUT(req: NextRequest) {
     // Sanitize profile_data — only allow known fields
     const safeProfile: Record<string, string> = {}
     if (profile_data && typeof profile_data === 'object') {
-      const allowed = ['phone', 'dob', 'country', 'city', 'address1', 'address2', 'postalCode']
+      const allowed = ['phone', 'dob', 'country', 'city', 'address1', 'address2', 'postalCode', 'avatar']
       for (const key of allowed) {
         if (typeof profile_data[key] === 'string') {
           safeProfile[key] = profile_data[key].trim()

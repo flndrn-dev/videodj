@@ -16,9 +16,10 @@ interface HeaderProps {
   onSelectAudioDevice: (deviceId: string) => void
   userName?: string
   userEmail?: string
+  userAvatar?: string
 }
 
-export function Header({ languageFilter, onOpenSetup, onOpenStream, isLive, audioDevices: devices, hasHeadphones, selectedAudioDevice, onSelectAudioDevice, userName, userEmail }: HeaderProps) {
+export function Header({ languageFilter, onOpenSetup, onOpenStream, isLive, audioDevices: devices, hasHeadphones, selectedAudioDevice, onSelectAudioDevice, userName, userEmail, userAvatar }: HeaderProps) {
   const [showDeviceMenu, setShowDeviceMenu] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const deviceMenuRef = useRef<HTMLDivElement>(null)
@@ -219,13 +220,17 @@ export function Header({ languageFilter, onOpenSetup, onOpenStream, isLive, audi
               whileTap={{ scale: 0.92 }}
               style={{
                 width: 28, height: 28, borderRadius: 8,
-                background: 'rgba(255,255,0,0.1)', border: '1px solid rgba(255,255,0,0.2)',
+                background: userAvatar ? 'transparent' : 'rgba(255,255,0,0.1)',
+                border: '1px solid rgba(255,255,0,0.2)',
                 color: '#ffff00', fontSize: 11, fontWeight: 700,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer',
+                cursor: 'pointer', overflow: 'hidden', padding: 0,
               }}
             >
-              {userName.charAt(0).toUpperCase()}
+              {userAvatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={userAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : userName.charAt(0).toUpperCase()}
             </motion.button>
 
             <AnimatePresence>

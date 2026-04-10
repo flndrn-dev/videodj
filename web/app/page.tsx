@@ -47,7 +47,7 @@ export default function Home() {
     addUserPlaylist, deleteUserPlaylist, setActivePlaylist, setUserPlaylists,
   } = usePlayerStore()
 
-  const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null)
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; avatar?: string } | null>(null)
   const [showSetup, setShowSetup] = useState(false)
   const [showPlaylistModal, setShowPlaylistModal] = useState(false)
   const [showStream, setShowStream] = useState(false)
@@ -214,7 +214,7 @@ export default function Home() {
 
         // Fetch current user info for header avatar
         fetch('/api/auth/session').then(r => r.ok ? r.json() : null).then(data => {
-          if (data?.name) setCurrentUser({ name: data.name, email: data.email })
+          if (data?.name) setCurrentUser({ name: data.name, email: data.email, avatar: data.profileData?.avatar })
         }).catch(() => {})
 
         // Fetch tracks from PostgreSQL (source of truth)
@@ -1441,6 +1441,7 @@ export default function Home() {
         onSelectAudioDevice={handleSelectAudioDevice}
         userName={currentUser?.name}
         userEmail={currentUser?.email}
+        userAvatar={currentUser?.avatar}
       />
 
       {/* ── Top 60%: Decks + Mixer ────────────────────────────────────── */}

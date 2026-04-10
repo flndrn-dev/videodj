@@ -111,7 +111,7 @@ export default function ProfilePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: displayName,
-          profile_data: { phone, dob, country, city, address1, address2, postalCode },
+          profile_data: { phone, dob, country, city, address1, address2, postalCode, avatar: user?.profileData?.avatar },
         }),
       })
       if (!res.ok) throw new Error('Failed to save')
