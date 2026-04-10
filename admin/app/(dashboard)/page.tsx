@@ -1,11 +1,26 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Ghost, Bot, Music, Users, Activity, MessageSquare, BookOpen, Wrench, MonitorCheck, Clock } from 'lucide-react'
+import { Ghost, Bot, Music, Users, Activity, MessageSquare, BookOpen, Wrench, MonitorCheck, Clock, UserPlus, Ticket, Lightbulb, DollarSign, Server, ChevronRight, ChevronDown, AlertTriangle, CheckCircle, XCircle, Info } from 'lucide-react'
 import { MetricCard } from '@/components/dashboard/MetricCard'
 import { Heartbeat } from '@/components/ghost/Heartbeat'
 import { useGhostHealth } from '@/app/hooks/useGhostHealth'
+
+const GHOST_URL = process.env.NEXT_PUBLIC_GHOST_URL || 'https://ghost.videodj.studio'
+const GHOST_API_KEY = process.env.NEXT_PUBLIC_GHOST_API_KEY || ''
+
+interface GhostActivity {
+  id: number
+  type: string
+  severity: string
+  component: string
+  error_message: string
+  fix_applied: string
+  fix_result: string
+  created_at: string
+}
 
 interface DashboardData {
   totalUsers: number
@@ -32,9 +47,12 @@ function timeAgo(dateStr: string): string {
 }
 
 export default function DashboardPage() {
-  const { health, loading: ghostLoading } = useGhostHealth()
+  const { health } = useGhostHealth()
+  const router = useRouter()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [ghostActivities, setGhostActivities] = useState<GhostActivity[]>([])
+  const [expandedActivity, setExpandedActivity] = useState<number | null>(null)
 
   useEffect(() => {
     fetch('/api/dashboard')
@@ -44,6 +62,25 @@ export default function DashboardPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
+
+    // Fetch Ghost telemetry
+    fetch(`${GHOST_URL}/knowledge/telemetry?limit=15`, {
+      headers: { 'x-ghost-api-key': GHOST_API_KEY },
+    })
+      .then(res => res.ok ? res.json() : [])
+      .then(entries => setGhostActivities(Array.isArray(entries) ? entries : entries.entries || []))
+      .catch(() => {})
+
+    // Poll every 30s for real-time updates
+    const interval = setInterval(() => {
+      fetch(`${GHOST_URL}/knowledge/telemetry?limit=15`, {
+        headers: { 'x-ghost-api-key': GHOST_API_KEY },
+      })
+        .then(res => res.ok ? res.json() : [])
+        .then(entries => setGhostActivities(Array.isArray(entries) ? entries : entries.entries || []))
+        .catch(() => {})
+    }, 30000)
+    return () => clearInterval(interval)
   }, [])
 
   return (
@@ -168,136 +205,179 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Activity panels */}
+      {/* Activity + Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent tracks */}
+        {/* Recent Ghost Activity — real-time, clickable with details */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.5 }}
           className="glass-card p-6 lg:col-span-2"
         >
-          <h3
-            className="text-sm font-semibold uppercase tracking-wider mb-4"
-            style={{ color: 'var(--text-tertiary)' }}
-          >
-            Recent Tracks
-          </h3>
-          <div className="space-y-3">
-            {loading ? (
-              <div className="flex items-center gap-3 py-8 justify-center">
-                <div
-                  className="w-4 h-4 rounded-full animate-pulse"
-                  style={{ background: 'var(--brand-yellow-dim)' }}
-                />
-                <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                  Loading tracks...
-                </span>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+              Recent Ghost Activity
+            </h3>
+            <button
+              onClick={() => router.push('/ghost')}
+              className="text-[10px] font-medium px-2 py-1 rounded-md transition-colors"
+              style={{ color: 'var(--ghost-purple)', background: 'var(--ghost-purple-dim)' }}
+            >
+              View All
+            </button>
+          </div>
+          <div className="space-y-1.5 max-h-[340px] overflow-y-auto">
+            {ghostActivities.length === 0 ? (
+              <div className="flex items-center gap-3 py-8 justify-center" style={{ color: 'var(--text-tertiary)' }}>
+                <Ghost size={20} style={{ color: 'var(--ghost-purple)', opacity: 0.5 }} />
+                <span className="text-sm">No Ghost activity yet</span>
               </div>
-            ) : data?.recentTracks && data.recentTracks.length > 0 ? (
-              data.recentTracks.map((track, i) => (
-                <motion.div
-                  key={track.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.35 + i * 0.04, duration: 0.3 }}
-                  className="flex items-center justify-between px-4 py-3 rounded-xl"
-                  style={{
-                    background: 'var(--bg-tertiary)',
-                    border: '1px solid var(--border-primary)',
-                  }}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Music size={14} style={{ color: 'var(--brand-yellow)', flexShrink: 0 }} strokeWidth={1.5} />
-                    <span className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>
-                      {track.artist ? `${track.artist} — ${track.title}` : track.title}
-                    </span>
-                  </div>
-                  <span
-                    className="text-xs ml-3 whitespace-nowrap"
-                    style={{ color: 'var(--text-tertiary)' }}
-                  >
-                    {timeAgo(track.created_at)}
-                  </span>
-                </motion.div>
-              ))
             ) : (
-              <div
-                className="flex items-center gap-3 py-8 justify-center"
-                style={{ color: 'var(--text-tertiary)' }}
-              >
-                <Music size={20} style={{ color: 'var(--brand-yellow)', opacity: 0.5 }} />
-                <span className="text-sm">No tracks yet.</span>
-              </div>
+              ghostActivities.map((activity, i) => {
+                const isExpanded = expandedActivity === activity.id
+                const severityColor = activity.severity === 'critical' ? 'var(--status-red)'
+                  : activity.severity === 'high' ? '#f97316'
+                  : activity.severity === 'medium' ? 'var(--status-amber)'
+                  : 'var(--text-tertiary)'
+                const resultIcon = activity.fix_result === 'success'
+                  ? <CheckCircle size={12} style={{ color: 'var(--status-green)' }} />
+                  : activity.fix_result === 'failed'
+                  ? <XCircle size={12} style={{ color: 'var(--status-red)' }} />
+                  : <Info size={12} style={{ color: 'var(--text-tertiary)' }} />
+
+                return (
+                  <motion.div
+                    key={activity.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.35 + i * 0.03, duration: 0.3 }}
+                  >
+                    {/* Activity row — clickable */}
+                    <button
+                      onClick={() => setExpandedActivity(isExpanded ? null : activity.id)}
+                      className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-left transition-colors"
+                      style={{
+                        background: isExpanded ? 'var(--bg-tertiary)' : 'transparent',
+                        border: isExpanded ? '1px solid var(--border-primary)' : '1px solid transparent',
+                      }}
+                      onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = 'var(--bg-tertiary)' }}
+                      onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: severityColor }} />
+                      {resultIcon}
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[11px] truncate block" style={{ color: 'var(--text-primary)' }}>
+                          {activity.error_message || activity.type}
+                        </span>
+                      </div>
+                      <span className="text-[9px] font-mono shrink-0 ml-2" style={{ color: 'var(--text-tertiary)' }}>
+                        {activity.component}
+                      </span>
+                      <span className="text-[9px] font-mono shrink-0 ml-2" style={{ color: 'var(--text-tertiary)' }}>
+                        {timeAgo(activity.created_at)}
+                      </span>
+                      {isExpanded
+                        ? <ChevronDown size={12} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+                        : <ChevronRight size={12} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+                      }
+                    </button>
+
+                    {/* Expanded detail */}
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="mx-3 mb-2 px-3 py-3 rounded-lg"
+                        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-secondary)' }}
+                      >
+                        <div className="grid grid-cols-2 gap-3 text-[10px]">
+                          <div>
+                            <span style={{ color: 'var(--text-tertiary)' }}>Type</span>
+                            <p className="font-mono mt-0.5" style={{ color: 'var(--text-primary)' }}>{activity.type}</p>
+                          </div>
+                          <div>
+                            <span style={{ color: 'var(--text-tertiary)' }}>Severity</span>
+                            <p className="font-mono mt-0.5" style={{ color: severityColor }}>{activity.severity}</p>
+                          </div>
+                          <div>
+                            <span style={{ color: 'var(--text-tertiary)' }}>Component</span>
+                            <p className="font-mono mt-0.5" style={{ color: 'var(--text-primary)' }}>{activity.component}</p>
+                          </div>
+                          <div>
+                            <span style={{ color: 'var(--text-tertiary)' }}>Result</span>
+                            <p className="font-mono mt-0.5" style={{
+                              color: activity.fix_result === 'success' ? 'var(--status-green)' : activity.fix_result === 'failed' ? 'var(--status-red)' : 'var(--text-primary)'
+                            }}>{activity.fix_result || 'pending'}</p>
+                          </div>
+                          {activity.error_message && (
+                            <div className="col-span-2">
+                              <span style={{ color: 'var(--text-tertiary)' }}>Error</span>
+                              <p className="font-mono mt-0.5 break-all" style={{ color: 'var(--status-red)' }}>{activity.error_message}</p>
+                            </div>
+                          )}
+                          {activity.fix_applied && (
+                            <div className="col-span-2">
+                              <span style={{ color: 'var(--text-tertiary)' }}>Fix Applied</span>
+                              <p className="font-mono mt-0.5" style={{ color: 'var(--status-green)' }}>{activity.fix_applied}</p>
+                            </div>
+                          )}
+                          <div className="col-span-2">
+                            <span style={{ color: 'var(--text-tertiary)' }}>Timestamp</span>
+                            <p className="font-mono mt-0.5" style={{ color: 'var(--text-primary)' }}>
+                              {new Date(activity.created_at).toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </motion.div>
+                )
+              })
             )}
           </div>
         </motion.div>
 
-        {/* Recent conversations */}
+        {/* Quick Actions */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35, duration: 0.5 }}
           className="glass-card p-6"
         >
-          <h3
-            className="text-sm font-semibold uppercase tracking-wider mb-4"
-            style={{ color: 'var(--text-tertiary)' }}
-          >
-            Linus Conversations
+          <h3 className="text-sm font-semibold uppercase tracking-wider mb-4" style={{ color: 'var(--text-tertiary)' }}>
+            Quick Actions
           </h3>
           <div className="space-y-2">
-            {loading ? (
-              <div className="flex items-center gap-3 py-8 justify-center">
-                <div
-                  className="w-4 h-4 rounded-full animate-pulse"
-                  style={{ background: 'var(--ghost-purple-dim)' }}
-                />
-                <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                  Loading...
-                </span>
-              </div>
-            ) : data?.recentConversations && data.recentConversations.length > 0 ? (
-              data.recentConversations.map((conv, i) => (
-                <motion.div
-                  key={conv.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.4 + i * 0.05, duration: 0.3 }}
-                  className="flex flex-col gap-1 px-4 py-3 rounded-xl"
-                  style={{
-                    background: 'var(--bg-tertiary)',
-                    border: '1px solid var(--border-primary)',
-                  }}
-                >
-                  <div className="flex items-center gap-2">
-                    <MessageSquare size={13} style={{ color: 'var(--ghost-purple)', flexShrink: 0 }} strokeWidth={1.5} />
-                    <span
-                      className="text-sm truncate"
-                      style={{ color: 'var(--text-primary)' }}
-                    >
-                      {conv.summary || 'Untitled conversation'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between pl-5">
-                    <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                      {conv.message_count} message{conv.message_count !== 1 ? 's' : ''}
-                    </span>
-                    <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                      {timeAgo(conv.created_at)}
-                    </span>
-                  </div>
-                </motion.div>
-              ))
-            ) : (
-              <div
-                className="flex items-center gap-3 py-8 justify-center"
-                style={{ color: 'var(--text-tertiary)' }}
+            {[
+              { label: 'Invite Beta Tester', icon: UserPlus, href: '/users', accent: 'var(--system-blue)', accentDim: 'var(--system-blue-dim)' },
+              { label: 'Open Tickets', icon: Ticket, href: '/support', accent: 'var(--status-amber)', accentDim: 'rgba(245, 158, 11, 0.15)' },
+              { label: 'New Idea', icon: Lightbulb, href: '/devzone', accent: 'var(--brand-yellow)', accentDim: 'var(--brand-yellow-dim)' },
+              { label: 'Revenue Report', icon: DollarSign, href: '/finance', accent: 'var(--status-green)', accentDim: 'rgba(34, 197, 94, 0.15)' },
+              { label: 'System Health', icon: Server, href: '/system', accent: 'var(--ghost-purple)', accentDim: 'var(--ghost-purple-dim)' },
+            ].map((action, i) => (
+              <motion.button
+                key={action.href}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.4 + i * 0.05, duration: 0.3 }}
+                whileHover={{ x: 4 }}
+                onClick={() => router.push(action.href)}
+                className="flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-colors text-left"
+                style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = action.accent }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-primary)' }}
               >
-                <Bot size={20} style={{ color: 'var(--ghost-purple)', opacity: 0.5 }} />
-                <span className="text-sm">No conversations yet.</span>
-              </div>
-            )}
+                <div className="p-2 rounded-lg" style={{ background: action.accentDim }}>
+                  <action.icon size={14} style={{ color: action.accent }} strokeWidth={1.5} />
+                </div>
+                <span className="text-sm font-medium flex-1" style={{ color: 'var(--text-primary)' }}>
+                  {action.label}
+                </span>
+                <ChevronRight size={14} style={{ color: 'var(--text-tertiary)' }} />
+              </motion.button>
+            ))}
           </div>
         </motion.div>
       </div>
