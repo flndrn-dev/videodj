@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #0a0a14;
+  --bg-secondary: #12121e;
+  --bg-card: #16162a;
+  --border: #1e1e38;
+  --border-hover: #2a2a4a;
+  --text-primary: #f0f0f8;
+  --text-secondary: #9898b8;
+  --text-muted: #5a5a78;
+  --brand-yellow: #ffff00;
+  --brand-yellow-dim: rgba(255, 255, 0, 0.12);
+  --brand-yellow-glow: rgba(255, 255, 0, 0.06);
+  --deck-blue: #45b1e8;
+  --deck-red: #ef4444;
+}
+
+@theme inline {
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+a, button, [role="button"], input[type="submit"], input[type="button"], select {
+  cursor: pointer;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Animated waveform background */
+@keyframes wave-drift {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-20px); }
+}
+
+.wave-bg {
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 0, 0.03) 0px,
+      rgba(255, 255, 0, 0.03) 1px,
+      transparent 1px,
+      transparent 8px
+    );
+  animation: wave-drift 8s ease-in-out infinite;
+}
+
+/* Hero glow */
+.hero-glow {
+  background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(255, 255, 0, 0.06) 0%, transparent 70%);
+}
+
+/* CTA pulse */
+@keyframes cta-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(255, 255, 0, 0.2), 0 0 60px rgba(255, 255, 0, 0.05); }
+  50% { box-shadow: 0 0 30px rgba(255, 255, 0, 0.35), 0 0 80px rgba(255, 255, 0, 0.1); }
+}
+
+.cta-glow {
+  animation: cta-pulse 3s ease-in-out infinite;
+}
+
+/* Glass */
+.glass {
+  background: linear-gradient(135deg, rgba(22, 22, 42, 0.8) 0%, rgba(18, 18, 30, 0.6) 100%);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  border-radius: 20px;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass:hover {
+  border-color: var(--border-hover);
+  box-shadow: 0 0 40px rgba(255, 255, 0, 0.03);
+}
+
+/* Vinyl spin */
+@keyframes vinyl-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.vinyl-spin {
+  animation: vinyl-spin 4s linear infinite;
+}
+
+/* Section divider */
+.section-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+}

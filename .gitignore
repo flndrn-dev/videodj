@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+desktop/dist/
+web/.next/
+admin/.next/
+site/.next/
+
+# Environment
+.env
+.env.local
+web/.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# Temporary
+tmp/

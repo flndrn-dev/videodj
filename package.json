@@ -1,0 +1,35 @@
+{
+  "name": "djstudio",
+  "version": "1.0.0",
+  "description": "videoDJ.Studio — AI-powered Video DJ & Auto-mixing App",
+  "private": true,
+  "workspaces": [
+    "admin",
+    "desktop",
+    "site",
+    "web"
+  ],
+  "scripts": {
+    "dev:web": "cd web && npm run dev",
+    "dev:desktop": "cd desktop && env -u ELECTRON_RUN_AS_NODE npm run dev",
+    "build:web": "cd web && npm run build",
+    "build:desktop": "cd desktop && npm run build",
+    "dist:mac": "cd desktop && npm run dist:mac",
+    "dist:win": "cd desktop && npm run dist:win",
+    "dist:linux": "cd desktop && npm run dist:linux",
+    "dev:admin": "cd admin && npm run dev",
+    "dev:site": "cd site && npm run dev",
+    "build:admin": "cd admin && npm run build",
+    "build:site": "cd site && npm run build",
+    "install:all": "cd web && npm install && cd ../desktop && npm install && cd ../admin && npm install"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1024.0",
+    "@aws-sdk/s3-request-presigner": "^3.1024.0",
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@ampproject/remapping": "^2.3.0",
+    "@types/ws": "^8.18.1"
+  }
+}

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1200 630">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #0a0a0f;
+      }
+
+      .st1, .st2, .st3 {
+        font-family: Helvetica-Bold, Helvetica;
+        font-size: 72px;
+        font-weight: 700;
+      }
+
+      .st1, .st4 {
+        fill: #ff0;
+      }
+
+      .st2, .st3 {
+        fill: #fff;
+      }
+
+      .st5 {
+        fill: #66a;
+        font-family: CourierNewPSMT, 'Courier New';
+        font-size: 22px;
+      }
+
+      .st5, .st3 {
+        isolation: isolate;
+      }
+
+      .st6 {
+        fill: none;
+        stroke: #1a1a2a;
+      }
+    </style>
+  </defs>
+  <rect class="st0" width="1200" height="630"/>
+  <line class="st6" y1="315" x2="1200" y2="315"/>
+  <line class="st6" x1="600" x2="600" y2="630"/>
+  <g>
+    <text class="st3" transform="translate(337.98 440)"><tspan x="0" y="0">video</tspan></text>
+    <text class="st1" transform="translate(526.03 440)"><tspan x="0" y="0">DJ</tspan></text>
+    <text class="st2" transform="translate(618.07 440)"><tspan x="0" y="0">.Studio</tspan></text>
+  </g>
+  <text class="st5" transform="translate(322.75 490)"><tspan x="0" y="0">AI-powered Video DJ &amp; Auto-mixing — v1.0.0</tspan></text>
+  <path class="st4" d="M600,245.2c-2.96,0-5.88.18-8.74.58l-28.02-28.03h-22.95l-4.14,4.14c-3.26,3.29-3.26,8.59,0,11.88l24.13,24.13c-17.45,12.4-28.81,32.77-28.81,55.83,0,37.85,30.68,68.53,68.53,68.53s68.53-30.68,68.53-68.53-30.71-68.53-68.53-68.53h0ZM600,351.8c-21.05,0-38.07-17.05-38.07-38.07,0-14.67,8.29-27.42,20.47-33.75,5.27-2.78,11.27-4.32,17.61-4.32,12.31,0,23.26,5.85,30.21,14.92,4.94,6.4,7.86,14.44,7.86,23.15,0,21.02-17.05,38.07-38.07,38.07h-.02Z"/>
+</svg>

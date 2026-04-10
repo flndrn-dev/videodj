@@ -1,0 +1,106 @@
+{
+  "name": "djstudio-desktop",
+  "version": "1.0.0",
+  "description": "videoDJ.Studio — AI-powered Video DJ Desktop App",
+  "author": "mavi <info@videodj.studio>",
+  "main": "src/main/main.js",
+  "scripts": {
+    "dev": "node dev.js",
+    "build": "cd ../web && npm run build && cd ../desktop && electron-builder --config",
+    "dist:mac": "cd ../web && npm run build && cd ../desktop && electron-builder --mac --config",
+    "dist:win": "cd ../web && npm run build && cd ../desktop && electron-builder --win --config",
+    "dist:linux": "cd ../web && npm run build && cd ../desktop && electron-builder --linux --config"
+  },
+  "build": {
+    "appId": "studio.videodj.app",
+    "productName": "videoDJ.Studio",
+    "copyright": "Copyright © 2026 mavi",
+    "directories": {
+      "output": "dist",
+      "buildResources": "resources"
+    },
+    "afterPack": "./scripts/afterPack.js",
+    "files": [
+      "src/main/**/*",
+      "src/preload/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../web/.next/standalone",
+        "to": "app",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../web/.next/static",
+        "to": "app/web/.next/static",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../web/public",
+        "to": "app/web/public",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.music",
+      "icon": "resources/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "hardenedRuntime": false,
+      "identity": null
+    },
+    "win": {
+      "icon": "resources/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "resources/icon.ico"
+    },
+    "linux": {
+      "category": "AudioVideo",
+      "icon": "resources/icons",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    }
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "33.2.0",
+    "electron-builder": "^26.8.1",
+    "wait-on": "^7.2.0"
+  }
+}
