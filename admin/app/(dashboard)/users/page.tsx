@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Users, UserPlus, Eye, EyeOff, Trash2, Mail, X } from 'lucide-react'
+import { Users, UserPlus, Eye, EyeOff, Trash2, Mail, X, Pencil, KeyRound, Copy, Check, PauseCircle, PlayCircle } from 'lucide-react'
+
 interface User {
   id: string
   email: string
@@ -30,6 +31,20 @@ const statusDotColors: Record<string, string> = {
   disabled: 'var(--status-red)',
 }
 
+function generatePassword(length = 16): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%'
+  return Array.from(crypto.getRandomValues(new Uint8Array(length)))
+    .map(b => chars[b % chars.length])
+    .join('')
+}
+
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(password)
+  const hash = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [showInvite, setShowInvite] = useState(false)
@@ -37,6 +52,21 @@ export default function UsersPage() {
   const [inviteName, setInviteName] = useState('')
   const [inviteRole, setInviteRole] = useState<User['role']>('beta_tester')
   const [filter, setFilter] = useState('all')
+
+  // Edit modal
+  const [editUser, setEditUser] = useState<User | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editRole, setEditRole] = useState<User['role']>('subscriber')
+
+  // Password reset modal
+  const [resetUser, setResetUser] = useState<User | null>(null)
+  const [generatedPassword, setGeneratedPassword] = useState('')
+  const [passwordCopied, setPasswordCopied] = useState(false)
+  const [passwordSaved, setPasswordSaved] = useState(false)
+
+  // Delete confirm
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/users').then(r => r.json()).then(data => setUsers(data.users ?? []))
@@ -47,36 +77,76 @@ export default function UsersPage() {
     const res = await fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: inviteEmail,
-        name: inviteName || inviteEmail.split('@')[0],
-        role: inviteRole,
-      }),
+      body: JSON.stringify({ email: inviteEmail, name: inviteName || inviteEmail.split('@')[0], role: inviteRole }),
     })
     if (!res.ok) return
     const data = await res.json()
     setUsers(prev => [...prev, data.user])
-    setInviteEmail('')
-    setInviteName('')
-    setShowInvite(false)
+    setInviteEmail(''); setInviteName(''); setShowInvite(false)
   }
 
-  const toggleStatus = async (id: string, status: string) => {
-    const newStatus = status === 'active' ? 'disabled' : 'active'
-    const res = await fetch(`/api/users/${id}`, {
+  const toggleStatus = async (user: User) => {
+    const newStatus = user.status === 'active' ? 'disabled' : 'active'
+    const res = await fetch(`/api/users/${user.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus }),
     })
     if (!res.ok) return
     const data = await res.json()
-    setUsers(prev => prev.map(u => u.id === id ? data.user : u))
+    setUsers(prev => prev.map(u => u.id === user.id ? data.user : u))
   }
 
   const handleDelete = async (id: string) => {
     const res = await fetch(`/api/users/${id}`, { method: 'DELETE' })
     if (!res.ok) return
     setUsers(prev => prev.filter(u => u.id !== id))
+    setDeleteConfirm(null)
+  }
+
+  const openEdit = (user: User) => {
+    setEditUser(user)
+    setEditName(user.name)
+    setEditEmail(user.email)
+    setEditRole(user.role)
+  }
+
+  const saveEdit = async () => {
+    if (!editUser) return
+    const res = await fetch(`/api/users/${editUser.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editName, email: editEmail, role: editRole }),
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    setUsers(prev => prev.map(u => u.id === editUser.id ? data.user : u))
+    setEditUser(null)
+  }
+
+  const openResetPassword = (user: User) => {
+    const pw = generatePassword()
+    setResetUser(user)
+    setGeneratedPassword(pw)
+    setPasswordCopied(false)
+    setPasswordSaved(false)
+  }
+
+  const savePassword = async () => {
+    if (!resetUser || !generatedPassword) return
+    const hash = await hashPassword(generatedPassword)
+    const res = await fetch(`/api/users/${resetUser.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password_hash: hash }),
+    })
+    if (res.ok) setPasswordSaved(true)
+  }
+
+  const copyPassword = () => {
+    navigator.clipboard.writeText(generatedPassword)
+    setPasswordCopied(true)
+    setTimeout(() => setPasswordCopied(false), 2000)
   }
 
   const filtered = filter === 'all' ? users : users.filter(u => u.role === filter)
@@ -91,29 +161,23 @@ export default function UsersPage() {
             {users.length} users — {users.filter(u => u.status === 'active').length} active
           </p>
         </div>
-        <button
-          onClick={() => setShowInvite(true)}
+        <button onClick={() => setShowInvite(true)}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium"
-          style={{ background: 'var(--brand-yellow)', color: 'var(--bg-primary)' }}
-        >
-          <UserPlus size={16} />
-          Invite User
+          style={{ background: 'var(--brand-yellow)', color: 'var(--bg-primary)' }}>
+          <UserPlus size={16} /> Invite User
         </button>
       </motion.div>
 
       {/* Filters */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="flex gap-2">
         {['all', 'admin', 'support_agent', 'beta_tester', 'subscriber'].map(role => (
-          <button
-            key={role}
-            onClick={() => setFilter(role)}
+          <button key={role} onClick={() => setFilter(role)}
             className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
             style={{
               background: filter === role ? 'var(--brand-yellow-dim)' : 'var(--bg-card)',
               color: filter === role ? 'var(--brand-yellow)' : 'var(--text-tertiary)',
               border: `1px solid ${filter === role ? 'rgba(255,255,0,0.2)' : 'var(--border-primary)'}`,
-            }}
-          >
+            }}>
             {role === 'all' ? 'All' : role.replace(/_/g, ' ')}
           </button>
         ))}
@@ -121,13 +185,13 @@ export default function UsersPage() {
 
       {/* Table */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass-card glass-card--yellow overflow-hidden">
-        <div className="hidden lg:grid grid-cols-[1fr_130px_100px_80px_90px_80px] gap-4 px-6 py-3 text-[10px] uppercase tracking-wider font-semibold"
+        <div className="hidden lg:grid grid-cols-[1fr_120px_90px_70px_90px_160px] gap-4 px-6 py-3 text-[10px] uppercase tracking-wider font-semibold"
           style={{ color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border-primary)' }}>
           <span>User</span><span>Role</span><span>Status</span><span>Sessions</span><span>Last Active</span><span>Actions</span>
         </div>
         {filtered.map((user, i) => (
           <motion.div key={user.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
-            className="flex flex-col lg:grid lg:grid-cols-[1fr_130px_100px_80px_90px_80px] gap-2 lg:gap-4 px-4 lg:px-6 py-4 lg:items-center transition-colors"
+            className="flex flex-col lg:grid lg:grid-cols-[1fr_120px_90px_70px_90px_160px] gap-2 lg:gap-4 px-4 lg:px-6 py-4 lg:items-center transition-colors"
             style={{ borderBottom: '1px solid var(--border-primary)' }}
             onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-tertiary)' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
@@ -153,13 +217,33 @@ export default function UsersPage() {
             <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
               {user.last_active ? new Date(user.last_active).toLocaleDateString() : '—'}
             </span>
+            {/* Actions */}
             <div className="flex items-center gap-1">
-              <button onClick={() => toggleStatus(user.id, user.status)} className="p-1.5 rounded-lg" style={{ color: 'var(--text-tertiary)' }}>
-                {user.status === 'active' ? <EyeOff size={14} /> : <Eye size={14} />}
+              <button onClick={() => openEdit(user)} title="Edit user" className="p-1.5 rounded-lg transition-colors"
+                style={{ color: 'var(--brand-yellow)' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--brand-yellow-dim)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                <Pencil size={13} />
+              </button>
+              <button onClick={() => toggleStatus(user)} title={user.status === 'active' ? 'Pause user' : 'Activate user'}
+                className="p-1.5 rounded-lg transition-colors"
+                style={{ color: user.status === 'active' ? 'var(--status-amber)' : 'var(--status-green)' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-elevated)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                {user.status === 'active' ? <PauseCircle size={13} /> : <PlayCircle size={13} />}
+              </button>
+              <button onClick={() => openResetPassword(user)} title="Reset password" className="p-1.5 rounded-lg transition-colors"
+                style={{ color: 'var(--system-blue)' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--system-blue-dim)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                <KeyRound size={13} />
               </button>
               {user.role !== 'admin' && (
-                <button onClick={() => handleDelete(user.id)} className="p-1.5 rounded-lg" style={{ color: 'var(--text-tertiary)' }}>
-                  <Trash2 size={14} />
+                <button onClick={() => setDeleteConfirm(user.id)} title="Delete user" className="p-1.5 rounded-lg transition-colors"
+                  style={{ color: 'var(--status-red)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                  <Trash2 size={13} />
                 </button>
               )}
             </div>
@@ -167,14 +251,14 @@ export default function UsersPage() {
         ))}
       </motion.div>
 
-      {/* Invite Modal */}
+      {/* ── Invite Modal ───────────────────────────────────── */}
       <AnimatePresence>
         {showInvite && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center"
             style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
             onClick={() => setShowInvite(false)}>
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
               className="glass-card p-8 w-full max-w-md" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-semibold" style={{ color: 'var(--brand-yellow)' }}>Invite User</h3>
@@ -184,14 +268,12 @@ export default function UsersPage() {
                 <div>
                   <label className="text-xs uppercase tracking-wider font-medium block mb-2" style={{ color: 'var(--text-tertiary)' }}>Email</label>
                   <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="user@example.com"
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                    style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }} />
+                    className="w-full px-4 py-3 rounded-xl text-sm outline-none" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }} />
                 </div>
                 <div>
                   <label className="text-xs uppercase tracking-wider font-medium block mb-2" style={{ color: 'var(--text-tertiary)' }}>Name</label>
                   <input type="text" value={inviteName} onChange={e => setInviteName(e.target.value)} placeholder="Display name"
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-                    style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }} />
+                    className="w-full px-4 py-3 rounded-xl text-sm outline-none" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }} />
                 </div>
                 <div>
                   <label className="text-xs uppercase tracking-wider font-medium block mb-2" style={{ color: 'var(--text-tertiary)' }}>Role</label>
@@ -211,13 +293,156 @@ export default function UsersPage() {
                 </div>
                 <button onClick={handleInvite} disabled={!inviteEmail}
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium mt-2"
-                  style={{
-                    background: inviteEmail ? 'var(--brand-yellow)' : 'var(--bg-elevated)',
-                    color: inviteEmail ? 'var(--bg-primary)' : 'var(--text-tertiary)',
-                    cursor: inviteEmail ? 'pointer' : 'not-allowed',
-                  }}>
-                  <Mail size={16} />
-                  Send Invite
+                  style={{ background: inviteEmail ? 'var(--brand-yellow)' : 'var(--bg-elevated)', color: inviteEmail ? 'var(--bg-primary)' : 'var(--text-tertiary)', cursor: inviteEmail ? 'pointer' : 'not-allowed' }}>
+                  <Mail size={16} /> Send Invite
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Edit Modal ─────────────────────────────────────── */}
+      <AnimatePresence>
+        {editUser && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setEditUser(null)}>
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+              className="glass-card p-8 w-full max-w-md" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold" style={{ color: 'var(--brand-yellow)' }}>Edit User</h3>
+                <button onClick={() => setEditUser(null)} style={{ color: 'var(--text-tertiary)' }}><X size={20} /></button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs uppercase tracking-wider font-medium block mb-2" style={{ color: 'var(--text-tertiary)' }}>Name</label>
+                  <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl text-sm outline-none" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider font-medium block mb-2" style={{ color: 'var(--text-tertiary)' }}>Email</label>
+                  <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl text-sm outline-none" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider font-medium block mb-2" style={{ color: 'var(--text-tertiary)' }}>Role</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['beta_tester', 'support_agent', 'subscriber', 'admin'] as const).map(role => (
+                      <button key={role} onClick={() => setEditRole(role)}
+                        className="px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-all"
+                        style={{
+                          background: editRole === role ? roleBadgeColors[role].bg : 'var(--bg-tertiary)',
+                          color: editRole === role ? roleBadgeColors[role].text : 'var(--text-tertiary)',
+                          border: `1px solid ${editRole === role ? `${roleBadgeColors[role].text}33` : 'var(--border-primary)'}`,
+                        }}>
+                        {role.replace(/_/g, ' ')}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button onClick={saveEdit}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium mt-2"
+                  style={{ background: 'var(--brand-yellow)', color: 'var(--bg-primary)' }}>
+                  <Check size={16} /> Save Changes
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Reset Password Modal ──────────────────────────── */}
+      <AnimatePresence>
+        {resetUser && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setResetUser(null)}>
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+              className="glass-card p-8 w-full max-w-md" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold" style={{ color: 'var(--system-blue)' }}>Reset Password</h3>
+                <button onClick={() => setResetUser(null)} style={{ color: 'var(--text-tertiary)' }}><X size={20} /></button>
+              </div>
+              <div className="space-y-4">
+                <div className="px-4 py-3 rounded-xl" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>User</p>
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{resetUser.name}</p>
+                  <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{resetUser.email}</p>
+                </div>
+
+                <div>
+                  <label className="text-xs uppercase tracking-wider font-medium block mb-2" style={{ color: 'var(--text-tertiary)' }}>
+                    Generated Password
+                  </label>
+                  <div className="flex gap-2">
+                    <input type="text" value={generatedPassword} readOnly
+                      className="flex-1 px-4 py-3 rounded-xl text-sm font-mono outline-none"
+                      style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', color: 'var(--brand-yellow)' }} />
+                    <button onClick={copyPassword} title="Copy to clipboard"
+                      className="px-3 rounded-xl transition-colors flex items-center gap-1"
+                      style={{ background: passwordCopied ? 'rgba(34,197,94,0.15)' : 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', color: passwordCopied ? 'var(--status-green)' : 'var(--text-tertiary)' }}>
+                      {passwordCopied ? <Check size={14} /> : <Copy size={14} />}
+                    </button>
+                    <button onClick={() => setGeneratedPassword(generatePassword())} title="Generate new"
+                      className="px-3 rounded-xl transition-colors"
+                      style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', color: 'var(--text-tertiary)', fontSize: 11 }}>
+                      New
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-[10px] leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+                  Copy this password and share it securely with the user. Once saved, only the hash is stored — the plain password cannot be recovered.
+                </p>
+
+                {passwordSaved ? (
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl"
+                    style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', color: 'var(--status-green)' }}>
+                    <Check size={16} />
+                    <span className="text-sm font-medium">Password saved. User can now sign in with the new password.</span>
+                  </div>
+                ) : (
+                  <button onClick={savePassword}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium"
+                    style={{ background: 'var(--system-blue)', color: 'white' }}>
+                    <KeyRound size={16} /> Save New Password
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Delete Confirm Modal ──────────────────────────── */}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setDeleteConfirm(null)}>
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+              className="glass-card p-8 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--status-red)' }}>Delete User</h3>
+              <p className="text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
+                {users.find(u => u.id === deleteConfirm)?.name}
+              </p>
+              <p className="text-xs mb-6" style={{ color: 'var(--text-tertiary)' }}>
+                This will permanently remove the user, their tracks, playlists, and all associated data. This cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => setDeleteConfirm(null)}
+                  className="flex-1 px-4 py-3 rounded-xl text-sm font-medium"
+                  style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-primary)' }}>
+                  Cancel
+                </button>
+                <button onClick={() => handleDelete(deleteConfirm)}
+                  className="flex-1 px-4 py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-2"
+                  style={{ background: 'var(--status-red)', color: 'white' }}>
+                  <Trash2 size={14} /> Delete
                 </button>
               </div>
             </motion.div>
