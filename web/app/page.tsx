@@ -152,7 +152,7 @@ export default function Home() {
 
       // Flag track as bad
       const trackId = deck.track.id
-      const trackName = deck.track.title || deck.track.filename
+      const trackName = deck.track.title || deck.track.file || 'Unknown'
       updateTrack(trackId, { badFile: true, badReason: 'Video playback failed' })
       updateTrackMeta(trackId, { badFile: true, badReason: 'Video playback failed' })
       syncEngine.syncTrackUpdate(trackId, { badFile: true, badReason: 'Video playback failed' })
