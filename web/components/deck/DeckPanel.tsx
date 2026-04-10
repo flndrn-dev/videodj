@@ -480,6 +480,7 @@ export const DeckPanel = forwardRef<DeckPanelHandle, DeckPanelProps>(function De
   // ---------------------------------------------------------------------------
   return (
     <motion.div
+      className="deck-panel"
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: 'spring', stiffness: 260, damping: 28, delay: deckId === 'A' ? 0.1 : 0.15 }}
@@ -491,6 +492,9 @@ export const DeckPanel = forwardRef<DeckPanelHandle, DeckPanelProps>(function De
         alignItems: 'center', justifyContent: 'center', gap: 8,
         padding: '8px 16px', background: '#0a0a14',
         position: 'relative', overflow: 'hidden',
+        animation: deck.playing && deck.track
+          ? `beat-pulse-${deckId === 'A' ? 'a' : 'b'} ${60 / Math.max(deck.track.bpm || 60, 60)}s ease-in-out infinite`
+          : 'none',
       }}
     >
       {/* Video — always mounted so ref is stable */}
@@ -574,7 +578,7 @@ export const DeckPanel = forwardRef<DeckPanelHandle, DeckPanelProps>(function De
       >
         <motion.div
           animate={deck.playing ? { rotate: 360 } : {}}
-          transition={deck.playing ? { duration: 2.5, repeat: Infinity, ease: 'linear' } : {}}
+          transition={deck.playing ? { duration: 60 / Math.max(deck.track?.bpm || 60, 60), repeat: Infinity, ease: 'linear' } : {}}
           style={{
             width: discSize || 100, height: discSize || 100,
             borderRadius: '50%',

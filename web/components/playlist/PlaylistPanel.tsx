@@ -226,22 +226,22 @@ const TrackRow = memo(function TrackRow({
       </div>
 
       {/* Album */}
-      <div style={{ width: 200, flexShrink: 0, marginRight: 8 }}>
+      <div className="col-album" style={{ width: 200, flexShrink: 0, marginRight: 8 }}>
         <EditableCell value={track.album} field="album" editing={editing} onChange={handleFieldChange} width={140} />
       </div>
 
       {/* Remixers */}
-      <div style={{ width: 90, flexShrink: 0, marginRight: 8 }}>
+      <div className="col-remixer" style={{ width: 90, flexShrink: 0, marginRight: 8 }}>
         <EditableCell value={track.remixer} field="remixer" editing={editing} onChange={handleFieldChange} width={90} />
       </div>
 
       {/* Genre */}
-      <div style={{ width: 70, flexShrink: 0, marginRight: 8 }}>
+      <div className="col-genre" style={{ width: 70, flexShrink: 0, marginRight: 8 }}>
         <EditableCell value={track.genre} field="genre" editing={editing} onChange={handleFieldChange} width={70} />
       </div>
 
       {/* Language */}
-      <div style={{ width: 30, flexShrink: 0, marginRight: 8, textAlign: 'center' }}>
+      <div className="col-language" style={{ width: 30, flexShrink: 0, marginRight: 8, textAlign: 'center' }}>
         <EditableCell
           value={track.language?.toUpperCase() || ''}
           field="language"
@@ -267,7 +267,7 @@ const TrackRow = memo(function TrackRow({
       </div>
 
       {/* Released */}
-      <div style={{ width: 55, flexShrink: 0, marginRight: 8, textAlign: 'right' }}>
+      <div className="col-released" style={{ width: 55, flexShrink: 0, marginRight: 8, textAlign: 'right' }}>
         <EditableCell value={track.released} field="released" editing={editing} onChange={handleFieldChange} width={55} align="right" />
       </div>
 
@@ -290,6 +290,7 @@ const TrackRow = memo(function TrackRow({
 
       {/* Cloud Status */}
       <span
+        className="col-cloud"
         title={track.minioKey ? 'Backed up to cloud' : track.uploadStatus === 'uploading' ? 'Uploading...' : track.uploadStatus === 'failed' ? 'Upload failed' : 'Pending upload'}
         style={{ width: 20, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       >
@@ -573,6 +574,7 @@ export function PlaylistPanel({
 
   return (
     <motion.div
+      className="playlist-zone"
       initial={{ opacity: 0, y: 40 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: 'spring', stiffness: 260, damping: 28, delay: 0.2 }}

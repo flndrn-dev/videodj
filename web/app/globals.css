@@ -80,9 +80,8 @@
 }
 
 html, body, #__next, #root {
-  /* Min resolution: iPad 10.2" landscape (1080x810) */
-  min-width: 810px;
-  min-height: 600px;
+  min-width: 320px;
+  min-height: 480px;
 }
 
 html, body, #__next {
@@ -206,6 +205,15 @@ button {
 }
 .spin { animation: spin 1.2s linear infinite; }
 
+@keyframes beat-pulse-a {
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(69, 177, 232, 0.15); }
+  10% { box-shadow: inset 0 0 8px 1px rgba(69, 177, 232, 0.3); }
+}
+@keyframes beat-pulse-b {
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.15); }
+  10% { box-shadow: inset 0 0 8px 1px rgba(239, 68, 68, 0.3); }
+}
+
 @theme inline {
   --font-heading:   var(--font-sans);
   --font-sans:   var(--font-sans);
@@ -292,5 +300,74 @@ button {
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* ─── Responsive Breakpoints ─────────────────────────────── */
+
+/* Tablet portrait (< 1024px) */
+@media (max-width: 1023px) {
+  .deck-zone {
+    flex-direction: column !important;
+    height: auto !important;
+    min-height: 50vh !important;
+  }
+  .deck-zone > .deck-panel {
+    height: 45vw !important;
+    min-height: 200px !important;
+  }
+  .deck-zone > .mixer-column {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    flex-direction: row !important;
+    padding: 8px 12px !important;
+    gap: 12px !important;
+    height: auto !important;
+    overflow-x: auto !important;
+  }
+  .playlist-zone {
+    height: auto !important;
+    min-height: 200px !important;
+    flex: 1 !important;
+  }
+}
+
+/* Mobile (< 768px) */
+@media (max-width: 767px) {
+  .deck-zone {
+    min-height: auto !important;
+  }
+  .deck-zone > .deck-panel {
+    height: 50vw !important;
+    min-height: 180px !important;
+  }
+  .deck-zone > .mixer-column {
+    padding: 6px 8px !important;
+    gap: 8px !important;
+  }
+  .playlist-zone .track-row {
+    padding: 4px 8px !important;
+  }
+  /* Hide less important columns on mobile */
+  .playlist-zone .col-album,
+  .playlist-zone .col-remixer,
+  .playlist-zone .col-released,
+  .playlist-zone .col-cloud {
+    display: none !important;
+  }
+}
+
+/* Small mobile (< 480px) */
+@media (max-width: 479px) {
+  .deck-zone > .deck-panel:nth-child(3) {
+    display: none !important;
+  }
+  .deck-switcher {
+    display: flex !important;
+  }
+  .playlist-zone .col-genre,
+  .playlist-zone .col-language {
+    display: none !important;
   }
 }

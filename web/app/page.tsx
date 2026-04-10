@@ -1404,7 +1404,7 @@ export default function Home() {
       />
 
       {/* ── Top 60%: Decks + Mixer ────────────────────────────────────── */}
-      <div style={{
+      <div className="deck-zone" style={{
         height: '60%', display: 'flex', overflow: 'hidden', minHeight: 0,
       }}>
         {/* Deck A */}
@@ -1439,7 +1439,7 @@ export default function Home() {
         />
 
         {/* Centre — crossfader + queue + EQ + buttons */}
-        <div style={{
+        <div className="mixer-column" style={{
           width: '25%', minWidth: 200, maxWidth: 400,
           flexShrink: 0,
           background: '#0d0d16',
