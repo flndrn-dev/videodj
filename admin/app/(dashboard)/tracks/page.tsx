@@ -63,7 +63,7 @@ export default function TracksPage() {
       body: JSON.stringify({ id: trackId, bad_file: bad, bad_reason: bad ? (reason || 'Failed playability test') : null }),
     })
     setTracks(prev => prev.map(t => t.id === trackId
-      ? { ...t, bad_file: bad, bad_reason: bad ? (reason || 'Failed playability test') : undefined }
+      ? { ...t, bad_file: bad, bad_reason: bad ? (reason || 'Failed playability test') : null }
       : t
     ))
   }
