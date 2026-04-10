@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Music, Search, CheckCircle, XCircle, AlertTriangle, Trash2, Shield, RefreshCw, Download, Pencil, X, Save } from 'lucide-react'
+import { Music, Search, CheckCircle, XCircle, AlertTriangle, Trash2, Shield, RefreshCw, Download, Pencil, X, Save, Play } from 'lucide-react'
 
 interface TrackRow {
   id: string
@@ -52,6 +52,36 @@ export default function TracksPage() {
   const [users, setUsers] = useState<{ id: string; email: string; name: string }[]>([])
   const [userFilter, setUserFilter] = useState('')
   const [recovering, setRecovering] = useState(false)
+  const [testStatus, setTestStatus] = useState<Record<string, 'idle' | 'testing' | 'ok' | 'broken'>>({})
+
+  const testTrack = async (trackId: string, minioKey: string) => {
+    setTestStatus(prev => ({ ...prev, [trackId]: 'testing' }))
+    try {
+      const res = await fetch('/api/tracks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'test', minioKey }),
+      })
+      const data = await res.json()
+      if (!data.streamUrl) { setTestStatus(prev => ({ ...prev, [trackId]: 'broken' })); return }
+
+      const video = document.createElement('video')
+      video.crossOrigin = 'anonymous'
+      video.preload = 'metadata'
+
+      const result = await new Promise<'ok' | 'broken'>((resolve) => {
+        const timeout = setTimeout(() => resolve('broken'), 8000)
+        video.onloadedmetadata = () => { clearTimeout(timeout); resolve('ok') }
+        video.onerror = () => { clearTimeout(timeout); resolve('broken') }
+        video.src = data.streamUrl
+      })
+
+      video.src = ''
+      setTestStatus(prev => ({ ...prev, [trackId]: result }))
+    } catch {
+      setTestStatus(prev => ({ ...prev, [trackId]: 'broken' }))
+    }
+  }
 
   const toggleSelect = (id: string) => {
     setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -334,7 +364,7 @@ export default function TracksPage() {
         {/* Table */}
         <div style={{ background: '#0d0d1a', border: '1px solid #2a2a4e', borderRadius: 12, overflow: 'hidden' }}>
           <div style={{
-            display: 'grid', gridTemplateColumns: '28px 1fr 120px 80px 55px 55px 50px 70px 160px',
+            display: 'grid', gridTemplateColumns: '28px 1fr 120px 80px 55px 55px 50px 70px 220px',
             padding: '8px 16px', borderBottom: '1px solid #2a2a4e', fontSize: 9,
             color: '#555', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1,
           }}>
@@ -358,10 +388,10 @@ export default function TracksPage() {
             <div key={track.id}>
               <div
                 style={{
-                  display: 'grid', gridTemplateColumns: '28px 1fr 120px 80px 55px 55px 50px 70px 160px',
+                  display: 'grid', gridTemplateColumns: '28px 1fr 120px 80px 55px 55px 50px 70px 220px',
                   padding: '8px 16px', borderBottom: '1px solid #1a1a2e',
                   alignItems: 'center', fontSize: 11,
-                  opacity: track.bad_file ? 0.5 : 1,
+                  opacity: track.bad_file ? 0.7 : 1,
                 }}
               >
                 <input type="checkbox" checked={selected.has(track.id)} onChange={() => toggleSelect(track.id)}
@@ -385,16 +415,49 @@ export default function TracksPage() {
                 <span style={{ color: '#888', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{track.bpm || '—'}</span>
                 <span style={{ color: '#888', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{track.key || '—'}</span>
                 <span style={{ color: '#888', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{formatDuration(track.duration)}</span>
-                <span style={{
-                  fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
-                  background: track.bad_file ? 'rgba(239,68,68,0.15)' : !track.minio_key ? 'rgba(245,158,11,0.15)' : 'rgba(74,222,128,0.1)',
-                  color: track.bad_file ? '#ef4444' : !track.minio_key ? '#f59e0b' : '#4ade80',
-                }}>
-                  {track.bad_file ? 'BAD' : !track.minio_key ? 'NO FILE' : 'OK'}
-                </span>
-                <div style={{ display: 'flex', gap: 3, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                <div>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                    background: track.bad_file ? 'rgba(239,68,68,0.15)' : !track.minio_key ? 'rgba(245,158,11,0.15)' : 'rgba(74,222,128,0.1)',
+                    color: track.bad_file ? '#ef4444' : !track.minio_key ? '#f59e0b' : '#4ade80',
+                  }}>
+                    {track.bad_file ? 'BAD' : !track.minio_key ? 'NO FILE' : 'OK'}
+                  </span>
+                  {track.bad_file && track.bad_reason && (
+                    <div style={{ fontSize: 8, color: '#ef4444', opacity: 0.7, marginTop: 2, maxWidth: 70, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                      title={track.bad_reason}>
+                      {track.bad_reason}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 3, justifyContent: 'flex-end', flexWrap: 'wrap', alignItems: 'center' }}>
                   {track.minio_key && (
                     <>
+                      {/* Play test button */}
+                      <button
+                        onClick={() => testTrack(track.id, track.minio_key!)}
+                        disabled={testStatus[track.id] === 'testing'}
+                        title="Test if file is playable"
+                        style={{
+                          padding: '3px 8px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 3,
+                          border: testStatus[track.id] === 'ok' ? '1px solid rgba(74,222,128,0.4)' :
+                                 testStatus[track.id] === 'broken' ? '1px solid rgba(239,68,68,0.4)' :
+                                 '1px solid rgba(168,85,247,0.3)',
+                          background: testStatus[track.id] === 'ok' ? 'rgba(74,222,128,0.1)' :
+                                     testStatus[track.id] === 'broken' ? 'rgba(239,68,68,0.1)' :
+                                     'transparent',
+                          color: testStatus[track.id] === 'ok' ? '#4ade80' :
+                                 testStatus[track.id] === 'broken' ? '#ef4444' :
+                                 testStatus[track.id] === 'testing' ? '#a855f7' : '#a855f7',
+                          cursor: testStatus[track.id] === 'testing' ? 'wait' : 'pointer', fontSize: 9,
+                          opacity: testStatus[track.id] === 'testing' ? 0.6 : 1,
+                        }}
+                      >
+                        <Play size={9} />
+                        {testStatus[track.id] === 'testing' ? 'Testing...' :
+                         testStatus[track.id] === 'ok' ? 'Playable' :
+                         testStatus[track.id] === 'broken' ? 'Broken' : 'Test'}
+                      </button>
                       <button onClick={() => handleVerify(track)} disabled={verifying.has(track.id)} title="Verify file exists in MinIO"
                         style={{ padding: '3px 6px', borderRadius: 4, border: '1px solid #2a2a4e', background: 'transparent', color: '#888', cursor: 'pointer', fontSize: 9, opacity: verifying.has(track.id) ? 0.5 : 1 }}>
                         {verifying.has(track.id) ? '...' : 'Verify'}
@@ -410,15 +473,31 @@ export default function TracksPage() {
                     <Pencil size={10} />
                   </button>
                   {track.bad_file && (
-                    <button onClick={() => handleAuthorize(track)} title="Mark as OK"
-                      style={{ padding: '3px 6px', borderRadius: 4, border: '1px solid rgba(74,222,128,0.3)', background: 'transparent', color: '#4ade80', cursor: 'pointer', fontSize: 9 }}>
-                      <Shield size={10} />
+                    <>
+                      <button onClick={() => handleAuthorize(track)} title="Accept — clear bad file flag"
+                        style={{
+                          padding: '3px 10px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4,
+                          border: '1px solid rgba(74,222,128,0.4)', background: 'rgba(74,222,128,0.12)',
+                          color: '#4ade80', cursor: 'pointer', fontSize: 9, fontWeight: 600,
+                        }}>
+                        <CheckCircle size={10} /> Accept
+                      </button>
+                      <button onClick={() => handleDelete(track)} title="Remove — delete from DB + MinIO"
+                        style={{
+                          padding: '3px 10px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4,
+                          border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)',
+                          color: '#ef4444', cursor: 'pointer', fontSize: 9, fontWeight: 600,
+                        }}>
+                        <Trash2 size={10} /> Remove
+                      </button>
+                    </>
+                  )}
+                  {!track.bad_file && (
+                    <button onClick={() => handleDelete(track)} title="Delete from DB + MinIO"
+                      style={{ padding: '3px 6px', borderRadius: 4, border: '1px solid rgba(239,68,68,0.3)', background: 'transparent', color: '#ef4444', cursor: 'pointer', fontSize: 9 }}>
+                      <Trash2 size={10} />
                     </button>
                   )}
-                  <button onClick={() => handleDelete(track)} title="Delete from DB + MinIO"
-                    style={{ padding: '3px 6px', borderRadius: 4, border: '1px solid rgba(239,68,68,0.3)', background: 'transparent', color: '#ef4444', cursor: 'pointer', fontSize: 9 }}>
-                    <Trash2 size={10} />
-                  </button>
                 </div>
               </div>
 

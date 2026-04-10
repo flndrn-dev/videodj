@@ -180,7 +180,9 @@ export function pickNextTrack(
   state: AutomixState,
   excludeIds: string[] = [],
 ): Track | null {
-  if (library.length === 0) return null
+  // Filter out bad files upfront — they should never be picked
+  const goodTracks = library.filter(t => !t.badFile)
+  if (goodTracks.length === 0) return null
   const currentArtist = (currentTrack.artist || '').toLowerCase()
   const exclude = new Set([...excludeIds, ...Array.from(state.playedIds)])
 
@@ -191,14 +193,14 @@ export function pickNextTrack(
   ].filter(Boolean))
 
   // Step 1: ideal — not played, artist not in recent window
-  let candidates = library.filter(t =>
+  let candidates = goodTracks.filter(t =>
     !exclude.has(t.id) && t.id !== currentTrack.id &&
     !recentArtists.has((t.artist || '').toLowerCase())
   )
 
   // Step 2: relax to just different from current artist
   if (candidates.length === 0) {
-    candidates = library.filter(t =>
+    candidates = goodTracks.filter(t =>
       !exclude.has(t.id) && t.id !== currentTrack.id &&
       (t.artist || '').toLowerCase() !== currentArtist
     )
@@ -206,14 +208,14 @@ export function pickNextTrack(
 
   // Step 3: relax artist rule entirely
   if (candidates.length === 0) {
-    candidates = library.filter(t => !exclude.has(t.id) && t.id !== currentTrack.id)
+    candidates = goodTracks.filter(t => !exclude.has(t.id) && t.id !== currentTrack.id)
   }
 
   // Step 4: reset history — keep only last 3 to avoid immediate repeats, then try again
   if (candidates.length === 0) {
     const keep = Array.from(state.playedIds).slice(-3)
     state.playedIds = new Set(keep)
-    candidates = library.filter(t =>
+    candidates = goodTracks.filter(t =>
       !state.playedIds.has(t.id) && t.id !== currentTrack.id &&
       !recentArtists.has((t.artist || '').toLowerCase())
     )
@@ -221,11 +223,11 @@ export function pickNextTrack(
 
   // Step 5: absolute fallback — just pick anything that isn't the current track
   if (candidates.length === 0) {
-    candidates = library.filter(t => t.id !== currentTrack.id)
+    candidates = goodTracks.filter(t => t.id !== currentTrack.id)
   }
 
   // Step 6: only 1 track in library
-  if (candidates.length === 0) return library[0]
+  if (candidates.length === 0) return goodTracks[0]
 
   // Score candidates
   const position = state.setDuration > 0
@@ -261,6 +263,8 @@ export function buildQueue(
   state: AutomixState,
   count = 5,
 ): Track[] {
+  // Filter out bad files — never queue them
+  const goodTracks = library.filter(t => !t.badFile)
   const queue: Track[] = []
   let simTrack = currentTrack
   let simElapsed = state.totalElapsed
@@ -274,7 +278,7 @@ export function buildQueue(
   const excludeIds = [currentTrack.id]
 
   for (let i = 0; i < count; i++) {
-    const next = pickNextTrack(library, simTrack, simState, excludeIds)
+    const next = pickNextTrack(goodTracks, simTrack, simState, excludeIds)
     if (!next) break
     queue.push(next)
     simState.playedIds.add(next.id)

@@ -120,12 +120,21 @@ const builtInRules: AutoFixRule[] = [
     fix: async () => {
       const videos = document.querySelectorAll('video')
       let fixed = false
-      videos.forEach(video => {
+      videos.forEach((video, i) => {
         if (video.readyState < 3 && !video.paused) {
           const currentTime = video.currentTime
           video.currentTime = Math.max(0, currentTime - 0.1)
           video.play().catch(() => {})
           fixed = true
+
+          // If still stalled after 3s, flag as bad and trigger skip
+          setTimeout(() => {
+            if (video.readyState < 3 && !video.paused) {
+              window.dispatchEvent(new CustomEvent('ghost:skip-stalled', {
+                detail: { deckIndex: i }
+              }))
+            }
+          }, 3000)
         }
       })
       return fixed

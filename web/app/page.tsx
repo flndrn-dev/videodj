@@ -140,6 +140,36 @@ export default function Home() {
     return () => destroyGhost()
   }, [])
 
+  // Listen for Ghost stalled-video skip events
+  useEffect(() => {
+    function handleSkipStalled(e: Event) {
+      const { deckIndex } = (e as CustomEvent).detail
+      const state = usePlayerStore.getState()
+      const deck = deckIndex === 0 ? state.deckA : state.deckB
+      const deckLabel = deckIndex === 0 ? 'A' : 'B'
+
+      if (!deck.track) return
+
+      // Flag track as bad
+      const trackId = deck.track.id
+      const trackName = deck.track.title || deck.track.filename
+      updateTrack(trackId, { badFile: true, badReason: 'Video playback failed' })
+      updateTrackMeta(trackId, { badFile: true, badReason: 'Video playback failed' })
+      syncEngine.syncTrackUpdate(trackId, { badFile: true, badReason: 'Video playback failed' })
+
+      toast.error(`Skipping broken file: ${trackName}`)
+
+      // If autoplay/automix is active, trigger transition to skip to next track
+      if (automixStateRef.current) {
+        autoplayTransition(deckLabel as 'A' | 'B')
+      }
+    }
+
+    window.addEventListener('ghost:skip-stalled', handleSkipStalled)
+    return () => window.removeEventListener('ghost:skip-stalled', handleSkipStalled)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Route both deck AudioContexts to the selected output device
   const handleSelectAudioDevice = useCallback(async (deviceId: string) => {
     setSelectedAudioDevice(deviceId)
@@ -571,10 +601,12 @@ export default function Home() {
             }
           }
 
-          // Skip bad files — pick another if the selected track is flagged
-          if (next?.badFile) {
+          // Skip bad files — keep trying up to 5 times
+          let skipAttempts = 0
+          while (next?.badFile && skipAttempts < 5) {
             automixStateRef.current.playedIds.add(next.id)
             next = pickNextTrack(trackSource, currentPlaying, automixStateRef.current)
+            skipAttempts++
           }
 
           if (next) {
