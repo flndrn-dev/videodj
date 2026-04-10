@@ -406,7 +406,7 @@ export default function LinusPage() {
             {[
               { label: 'Provider', value: modelConfig ? (PROVIDER_LABELS[modelConfig.provider] || modelConfig.provider) : '...' },
               { label: 'Model', value: modelConfig?.model || '...' },
-              { label: 'Mode', value: modelConfig?.mode === 'api' ? 'API Key' : (modelConfig?.mode || '...') },
+              { label: 'Mode', value: modelConfig?.mode === 'apikey' || modelConfig?.mode === 'api' ? 'API Key' : modelConfig?.mode === 'subscription' ? 'Claude CLI' : (modelConfig?.mode || '...') },
               { label: 'Status', value: modelConfig ? (modelConfig.provider === 'mock' ? 'Demo Mode' : 'Active') : '...' },
             ].map(item => (
               <div key={item.label} className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid var(--border-primary)' }}>

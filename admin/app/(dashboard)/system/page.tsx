@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
-import { Server, Cpu, HardDrive, Wifi, Activity, Brain, Zap, Database, Clock } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Server, Cpu, HardDrive, Wifi, Activity, Brain, Zap, Database, Clock, X, AlertTriangle, CheckCircle } from 'lucide-react'
 import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter'
 import { useGhostHealth } from '@/app/hooks/useGhostHealth'
 
@@ -76,6 +76,7 @@ export default function SystemPage() {
     ollamaStatus: 'running', ollamaModel: 'qwen2.5-coder:7b', ollamaVersion: '0.20.2',
   })
   const [loading, setLoading] = useState(true)
+  const [expandedGauge, setExpandedGauge] = useState<string | null>(null)
 
   useEffect(() => {
     async function fetchSystem() {
@@ -117,19 +118,22 @@ export default function SystemPage() {
         <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)' }}>KVM4 VPS — Manchester, UK</p>
       </motion.div>
 
-      {/* Gauges */}
+      {/* Gauges — clickable */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
-          { label: 'Heap Memory', value: heapUsedMB, max: heapTotalMB, icon: Activity, unit: 'MB' },
-          { label: 'RSS Memory', value: rssMB, max: rssMB + 100, icon: Cpu, unit: 'MB' },
-          { label: 'External', value: externalMB, max: Math.max(externalMB * 2, 10), icon: HardDrive, unit: 'MB' },
+          { id: 'heap', label: 'Heap Memory', value: heapUsedMB, max: heapTotalMB, icon: Activity, unit: 'MB' },
+          { id: 'rss', label: 'RSS Memory', value: rssMB, max: rssMB + 100, icon: Cpu, unit: 'MB' },
+          { id: 'external', label: 'External', value: externalMB, max: Math.max(externalMB * 2, 10), icon: HardDrive, unit: 'MB' },
         ].map((gauge, i) => (
           <motion.div
             key={gauge.label}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
+            whileHover={{ scale: 1.02, y: -2 }}
+            whileTap={{ scale: 0.98 }}
             transition={{ delay: 0.1 + i * 0.05 }}
-            className="glass-card glass-card--system p-6 flex flex-col items-center relative"
+            className="glass-card glass-card--system p-6 flex flex-col items-center relative cursor-pointer"
+            onClick={() => setExpandedGauge(expandedGauge === gauge.id ? null : gauge.id)}
           >
             <div className="flex items-center gap-2 mb-4 self-start">
               <gauge.icon size={14} style={{ color: 'var(--system-blue)' }} />
@@ -146,6 +150,105 @@ export default function SystemPage() {
           </motion.div>
         ))}
       </div>
+
+      {/* Expanded gauge detail */}
+      <AnimatePresence>
+        {expandedGauge === 'heap' && systemData && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }} className="glass-card glass-card--system p-5 overflow-hidden">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2" style={{ color: 'var(--system-blue)' }}>
+                <Activity size={14} /> Heap Memory Detail
+              </h4>
+              <button onClick={() => setExpandedGauge(null)} style={{ color: 'var(--text-tertiary)' }}><X size={14} /></button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="px-3 py-3 rounded-lg" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
+                <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Heap Used</span>
+                <p className="text-lg font-bold font-mono" style={{ color: 'var(--system-blue)' }}>{formatBytes(systemData.node.memory.heapUsed)}</p>
+              </div>
+              <div className="px-3 py-3 rounded-lg" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
+                <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Heap Total</span>
+                <p className="text-lg font-bold font-mono" style={{ color: 'var(--text-secondary)' }}>{formatBytes(systemData.node.memory.heapTotal)}</p>
+              </div>
+              <div className="px-3 py-3 rounded-lg" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
+                <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Usage</span>
+                <p className="text-lg font-bold font-mono" style={{ color: heapUsedMB / heapTotalMB > 0.9 ? 'var(--status-red)' : heapUsedMB / heapTotalMB > 0.7 ? 'var(--status-amber)' : 'var(--status-green)' }}>
+                  {((heapUsedMB / heapTotalMB) * 100).toFixed(1)}%
+                </p>
+              </div>
+              <div className="px-3 py-3 rounded-lg" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
+                <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Free</span>
+                <p className="text-lg font-bold font-mono" style={{ color: 'var(--status-green)' }}>{formatBytes(systemData.node.memory.heapTotal - systemData.node.memory.heapUsed)}</p>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-[10px]" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
+              {heapUsedMB / heapTotalMB > 0.9
+                ? <><AlertTriangle size={12} style={{ color: 'var(--status-red)' }} /> <span style={{ color: 'var(--status-red)' }}>Critical: Heap usage above 90%. Consider restarting the service or increasing memory.</span></>
+                : heapUsedMB / heapTotalMB > 0.7
+                ? <><AlertTriangle size={12} style={{ color: 'var(--status-amber)' }} /> <span style={{ color: 'var(--status-amber)' }}>Warning: Heap usage above 70%. Monitor for potential memory pressure.</span></>
+                : <><CheckCircle size={12} style={{ color: 'var(--status-green)' }} /> <span style={{ color: 'var(--status-green)' }}>Healthy: Heap memory usage is within normal range.</span></>
+              }
+            </div>
+          </motion.div>
+        )}
+
+        {expandedGauge === 'rss' && systemData && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }} className="glass-card glass-card--system p-5 overflow-hidden">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2" style={{ color: 'var(--system-blue)' }}>
+                <Cpu size={14} /> RSS Memory Detail
+              </h4>
+              <button onClick={() => setExpandedGauge(null)} style={{ color: 'var(--text-tertiary)' }}><X size={14} /></button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="px-3 py-3 rounded-lg" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
+                <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Resident Set Size</span>
+                <p className="text-lg font-bold font-mono" style={{ color: 'var(--system-blue)' }}>{formatBytes(systemData.node.memory.rss)}</p>
+              </div>
+              <div className="px-3 py-3 rounded-lg" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
+                <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Heap Portion</span>
+                <p className="text-lg font-bold font-mono" style={{ color: 'var(--text-secondary)' }}>{formatBytes(systemData.node.memory.heapTotal)}</p>
+              </div>
+              <div className="px-3 py-3 rounded-lg" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
+                <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Non-Heap (Native + C++)</span>
+                <p className="text-lg font-bold font-mono" style={{ color: 'var(--status-amber)' }}>{formatBytes(systemData.node.memory.rss - systemData.node.memory.heapTotal)}</p>
+              </div>
+            </div>
+            <div className="mt-3 px-3 py-2 rounded-lg text-[10px]" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', color: 'var(--text-tertiary)' }}>
+              RSS (Resident Set Size) is the total physical memory used by the Node.js process, including heap, stack, and native C++ allocations. RSS &gt; Heap Total indicates native memory usage from dependencies like pg, image processing, etc.
+            </div>
+          </motion.div>
+        )}
+
+        {expandedGauge === 'external' && systemData && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }} className="glass-card glass-card--system p-5 overflow-hidden">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2" style={{ color: 'var(--system-blue)' }}>
+                <HardDrive size={14} /> External Memory Detail
+              </h4>
+              <button onClick={() => setExpandedGauge(null)} style={{ color: 'var(--text-tertiary)' }}><X size={14} /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="px-3 py-3 rounded-lg" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
+                <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>External V8 Memory</span>
+                <p className="text-lg font-bold font-mono" style={{ color: 'var(--system-blue)' }}>{formatBytes(systemData.node.memory.external)}</p>
+              </div>
+              <div className="px-3 py-3 rounded-lg" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
+                <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>% of Total RSS</span>
+                <p className="text-lg font-bold font-mono" style={{ color: 'var(--text-secondary)' }}>
+                  {systemData.node.memory.rss > 0 ? ((systemData.node.memory.external / systemData.node.memory.rss) * 100).toFixed(1) : 0}%
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 px-3 py-2 rounded-lg text-[10px]" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', color: 'var(--text-tertiary)' }}>
+              External memory is allocated outside V8&apos;s heap by C++ objects backed by JavaScript (like Buffers, TypedArrays). Common sources: file I/O buffers, crypto operations, database driver buffers, HTTP request/response bodies.
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Node Info + DB Tables */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
