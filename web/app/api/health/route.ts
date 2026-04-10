@@ -14,12 +14,11 @@ async function checkDb(): Promise<boolean> {
 
 export async function GET() {
   const dbOk = await checkDb()
-  const status = dbOk ? 200 : 503
-
+  // Always return 200 for Docker HEALTHCHECK — app is running even if DB is down
   return NextResponse.json({
     status: dbOk ? 'healthy' : 'degraded',
     db: dbOk ? 'connected' : 'disconnected',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
-  }, { status })
+  })
 }
