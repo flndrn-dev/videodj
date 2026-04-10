@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Save, User, Shield, Crown } from 'lucide-react'
+import { ArrowLeft, Save, User, Shield, Crown, Camera } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
 interface UserProfile {
@@ -156,14 +156,72 @@ export default function ProfilePage() {
 
         {/* Profile header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 40 }}>
-          <div style={{
-            width: 64, height: 64, borderRadius: 16,
-            background: 'rgba(255,255,0,0.1)', border: '2px solid rgba(255,255,0,0.2)',
-            color: '#ffff00', fontSize: 24, fontWeight: 900,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-          }}>
-            {user.name?.charAt(0).toUpperCase() || '?'}
+          {/* Avatar — clickable to upload */}
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <input
+              type="file"
+              accept="image/*"
+              id="avatar-upload"
+              style={{ display: 'none' }}
+              onChange={async (e) => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                // Convert to base64 data URL and save to profile_data
+                const reader = new FileReader()
+                reader.onload = async () => {
+                  const dataUrl = reader.result as string
+                  // Resize to 128x128 for storage efficiency
+                  const img = new Image()
+                  img.onload = async () => {
+                    const canvas = document.createElement('canvas')
+                    canvas.width = 128; canvas.height = 128
+                    const ctx = canvas.getContext('2d')!
+                    const size = Math.min(img.width, img.height)
+                    const sx = (img.width - size) / 2, sy = (img.height - size) / 2
+                    ctx.drawImage(img, sx, sy, size, size, 0, 0, 128, 128)
+                    const avatar = canvas.toDataURL('image/jpeg', 0.85)
+                    try {
+                      await fetch('/api/auth/profile', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ profile_data: { ...user.profileData, avatar } }),
+                      })
+                      setUser(prev => prev ? { ...prev, profileData: { ...prev.profileData, avatar } } : prev)
+                      toast.success('Avatar updated')
+                    } catch { toast.error('Failed to save avatar') }
+                  }
+                  img.src = dataUrl
+                }
+                reader.readAsDataURL(file)
+              }}
+            />
+            <label htmlFor="avatar-upload" style={{ cursor: 'pointer', display: 'block' }}>
+              <div style={{
+                width: 64, height: 64, borderRadius: 16,
+                background: user.profileData?.avatar ? 'transparent' : 'rgba(255,255,0,0.1)',
+                border: '2px solid rgba(255,255,0,0.2)',
+                color: '#ffff00', fontSize: 24, fontWeight: 900,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                overflow: 'hidden', position: 'relative',
+              }}>
+                {user.profileData?.avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={user.profileData.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  user.name?.charAt(0).toUpperCase() || '?'
+                )}
+              </div>
+              <div style={{
+                position: 'absolute', bottom: -2, right: -2,
+                width: 20, height: 20, borderRadius: '50%',
+                background: '#ffff00', color: '#0b0b14',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 10, fontWeight: 900,
+                border: '2px solid #0b0b14',
+              }}>
+                <Camera size={10} />
+              </div>
+            </label>
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.3px' }}>{user.name}</div>
