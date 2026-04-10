@@ -2,7 +2,7 @@
 import { useRef, useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { SettingsIcon } from '@/components/ui/settings'
-import { Flag, Headphones, Volume2, Check } from 'lucide-react'
+import { Flag, Headphones, Volume2, Check, User, LogOut } from 'lucide-react'
 import { type AudioOutputDevice } from '@/app/lib/audioDevices'
 
 interface HeaderProps {
@@ -14,13 +14,17 @@ interface HeaderProps {
   hasHeadphones: boolean
   selectedAudioDevice: string
   onSelectAudioDevice: (deviceId: string) => void
+  userName?: string
+  userEmail?: string
 }
 
-export function Header({ languageFilter, onOpenSetup, onOpenStream, isLive, audioDevices: devices, hasHeadphones, selectedAudioDevice, onSelectAudioDevice }: HeaderProps) {
+export function Header({ languageFilter, onOpenSetup, onOpenStream, isLive, audioDevices: devices, hasHeadphones, selectedAudioDevice, onSelectAudioDevice, userName, userEmail }: HeaderProps) {
   const [showDeviceMenu, setShowDeviceMenu] = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false)
   const deviceMenuRef = useRef<HTMLDivElement>(null)
+  const userMenuRef = useRef<HTMLDivElement>(null)
 
-  // Close on outside click
+  // Close device menu on outside click
   useEffect(() => {
     if (!showDeviceMenu) return
     function handleClick(e: MouseEvent) {
@@ -31,6 +35,18 @@ export function Header({ languageFilter, onOpenSetup, onOpenStream, isLive, audi
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [showDeviceMenu])
+
+  // Close user menu on outside click
+  useEffect(() => {
+    if (!showUserMenu) return
+    function handleClick(e: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [showUserMenu])
 
   return (
     <motion.header
@@ -193,6 +209,70 @@ export function Header({ languageFilter, onOpenSetup, onOpenStream, isLive, audi
           onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.color = '#555570')}>
           <SettingsIcon size={17} />
         </motion.button>
+
+        {/* User avatar */}
+        {userName && (
+          <div style={{ position: 'relative' }} ref={userMenuRef}>
+            <motion.button
+              onClick={() => setShowUserMenu(prev => !prev)}
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.92 }}
+              style={{
+                width: 28, height: 28, borderRadius: 8,
+                background: 'rgba(255,255,0,0.1)', border: '1px solid rgba(255,255,0,0.2)',
+                color: '#ffff00', fontSize: 11, fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+            >
+              {userName.charAt(0).toUpperCase()}
+            </motion.button>
+
+            <AnimatePresence>
+              {showUserMenu && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.95 }}
+                  transition={{ duration: 0.12 }}
+                  style={{
+                    position: 'absolute', top: '100%', right: 0, marginTop: 8,
+                    background: '#16162a', border: '1px solid #2a2a4e',
+                    borderRadius: 10, padding: 4, zIndex: 200, minWidth: 180,
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+                  }}
+                >
+                  <div style={{ padding: '8px 12px', borderBottom: '1px solid #2a2a4e' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#e0e0f0' }}>{userName}</div>
+                    <div style={{ fontSize: 9, color: '#555570' }}>{userEmail}</div>
+                  </div>
+                  <a href="/profile" style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 12px', fontSize: 11, color: '#e0e0f0',
+                    textDecoration: 'none', borderRadius: 6,
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                    <User size={13} /> My Profile
+                  </a>
+                  <button onClick={async () => {
+                    await fetch('/api/auth/session', { method: 'DELETE' })
+                    window.location.href = '/login'
+                  }} style={{
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                    padding: '8px 12px', fontSize: 11, color: '#ef4444',
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    borderRadius: 6, textAlign: 'left',
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.05)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                    <LogOut size={13} /> Sign Out
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
     </motion.header>
   )

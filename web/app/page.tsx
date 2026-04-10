@@ -47,6 +47,7 @@ export default function Home() {
     addUserPlaylist, deleteUserPlaylist, setActivePlaylist, setUserPlaylists,
   } = usePlayerStore()
 
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null)
   const [showSetup, setShowSetup] = useState(false)
   const [showPlaylistModal, setShowPlaylistModal] = useState(false)
   const [showStream, setShowStream] = useState(false)
@@ -210,6 +211,11 @@ export default function Home() {
           console.warn('[restore] No userId — user not logged in')
           return
         }
+
+        // Fetch current user info for header avatar
+        fetch('/api/auth/session').then(r => r.ok ? r.json() : null).then(data => {
+          if (data?.name) setCurrentUser({ name: data.name, email: data.email })
+        }).catch(() => {})
 
         // Fetch tracks from PostgreSQL (source of truth)
         const cloudTracks = await syncEngine.reconcile()
@@ -1433,6 +1439,8 @@ export default function Home() {
         hasHeadphones={hasHeadphones}
         selectedAudioDevice={selectedAudioDevice}
         onSelectAudioDevice={handleSelectAudioDevice}
+        userName={currentUser?.name}
+        userEmail={currentUser?.email}
       />
 
       {/* ── Top 60%: Decks + Mixer ────────────────────────────────────── */}

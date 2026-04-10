@@ -8,6 +8,46 @@ async function getPool() {
   })
 }
 
+// GET — get single user with stats
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const pool = await getPool()
+  try {
+    const { id } = await params
+
+    const [userResult, tracksResult, playlistsResult, conversationsResult, sessionsResult] = await Promise.all([
+      pool.query('SELECT * FROM users WHERE id = $1', [id]),
+      pool.query('SELECT count(*) as count, sum(times_played) as total_plays FROM tracks WHERE user_id = $1', [id]),
+      pool.query('SELECT count(*) as count FROM user_playlists WHERE user_id = $1', [id]),
+      pool.query('SELECT count(*) as count, sum(message_count) as total_messages FROM linus_conversations WHERE user_id = $1', [id]),
+      pool.query('SELECT count(*) as count FROM auth_sessions WHERE user_id = $1 AND expires_at > NOW()', [id]),
+    ])
+
+    if (userResult.rowCount === 0) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    return NextResponse.json({
+      user: userResult.rows[0],
+      stats: {
+        tracks: parseInt(tracksResult.rows[0].count) || 0,
+        totalPlays: parseInt(tracksResult.rows[0].total_plays) || 0,
+        playlists: parseInt(playlistsResult.rows[0].count) || 0,
+        conversations: parseInt(conversationsResult.rows[0].count) || 0,
+        totalMessages: parseInt(conversationsResult.rows[0].total_messages) || 0,
+        activeSessions: parseInt(sessionsResult.rows[0].count) || 0,
+      },
+    })
+  } catch (err) {
+    console.error('User GET error:', err)
+    return NextResponse.json({ error: 'Failed to fetch user' }, { status: 500 })
+  } finally {
+    await pool.end()
+  }
+}
+
 // PUT — update user
 export async function PUT(
   req: NextRequest,

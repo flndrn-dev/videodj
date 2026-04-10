@@ -54,8 +54,15 @@ export function Header() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const notifRef = useRef<HTMLDivElement>(null)
 
-  // User menu
+  // User menu + real user data
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [adminUser, setAdminUser] = useState<{ name: string; email: string; role: string } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/auth/session').then(r => r.ok ? r.json() : null).then(data => {
+      if (data?.user) setAdminUser({ name: data.user.name, email: data.user.email, role: data.user.role || 'admin' })
+    }).catch(() => {})
+  }, [])
   const userRef = useRef<HTMLDivElement>(null)
 
   const unreadCount = notifications.filter(n => !n.read).length
@@ -291,11 +298,11 @@ export function Header() {
           <div className="relative" ref={userRef}>
             <button
               onClick={() => { setShowUserMenu(!showUserMenu); setShowNotifications(false) }}
-              title="DJ Bodhi — Admin"
+              title={adminUser ? `${adminUser.name} — ${adminUser.role}` : 'User'}
               className="w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-bold cursor-pointer"
               style={{ background: 'var(--brand-yellow-dim)', color: 'var(--brand-yellow)', border: '1px solid rgba(255, 255, 0, 0.2)' }}
             >
-              B
+              {adminUser?.name?.charAt(0)?.toUpperCase() || '?'}
             </button>
 
             <AnimatePresence>
@@ -309,8 +316,8 @@ export function Header() {
                   style={{ background: 'var(--bg-card)', border: '1px solid var(--border-primary)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
                 >
                   <div className="px-3 py-2.5" style={{ borderBottom: '1px solid var(--border-primary)' }}>
-                    <p className="text-[11px] font-medium" style={{ color: 'var(--text-primary)' }}>DJ Bodhi</p>
-                    <p className="text-[9px]" style={{ color: 'var(--text-tertiary)' }}>Admin</p>
+                    <p className="text-[11px] font-medium" style={{ color: 'var(--text-primary)' }}>{adminUser?.name || 'User'}</p>
+                    <p className="text-[9px]" style={{ color: 'var(--text-tertiary)' }}>{adminUser?.email || adminUser?.role || 'Admin'}</p>
                   </div>
                   <button onClick={handleSignOut}
                     className="flex items-center gap-2 w-full px-3 py-2.5 text-[11px] transition-colors"

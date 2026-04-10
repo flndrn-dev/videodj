@@ -223,7 +223,7 @@ export default function UsersPage() {
                 {/* Name + email */}
                 <div className="shrink-0" style={{ width: 180 }}>
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{user.name}</p>
+                    <a href={`/users/${user.id}`} className="text-sm font-semibold hover:underline" style={{ color: 'var(--text-primary)', cursor: 'pointer' }}>{user.name}</a>
                     <div className="flex items-center gap-1">
                       <div className="w-1.5 h-1.5 rounded-full" style={{ background: statusDotColors[user.status] }} />
                       <span className="text-[9px] capitalize" style={{ color: 'var(--text-secondary)' }}>{user.status}</span>
