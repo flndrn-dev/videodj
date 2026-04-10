@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion'
 import { AnimatedCounter } from './AnimatedCounter'
+import { useRouter } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
 
 interface MetricCardProps {
@@ -16,6 +17,7 @@ interface MetricCardProps {
   accentDim: string
   glowClass?: string
   delay?: number
+  href?: string
 }
 
 export function MetricCard({
@@ -30,17 +32,24 @@ export function MetricCard({
   accentDim,
   glowClass = '',
   delay = 0,
+  href,
 }: MetricCardProps) {
+  const router = useRouter()
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
+      whileHover={href ? { scale: 1.02, y: -2 } : undefined}
+      whileTap={href ? { scale: 0.98 } : undefined}
       transition={{
         duration: 0.5,
         delay,
         ease: [0.16, 1, 0.3, 1],
       }}
-      className={`glass-card ${glowClass} p-6 cursor-default`}
+      onClick={href ? () => router.push(href) : undefined}
+      className={`glass-card ${glowClass} p-6 ${href ? 'cursor-pointer' : 'cursor-default'}`}
+      style={href ? { transition: 'border-color 0.2s' } : undefined}
     >
       <div className="flex items-start justify-between mb-4">
         <div

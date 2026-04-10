@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Ghost, Bot, Music, Users, Activity, MessageSquare } from 'lucide-react'
+import { Ghost, Bot, Music, Users, Activity, MessageSquare, BookOpen, Wrench, MonitorCheck, Clock } from 'lucide-react'
 import { MetricCard } from '@/components/dashboard/MetricCard'
 import { Heartbeat } from '@/components/ghost/Heartbeat'
 import { useGhostHealth } from '@/app/hooks/useGhostHealth'
@@ -72,7 +72,55 @@ export default function DashboardPage() {
         connections={health?.activeConnections || 0}
       />
 
-      {/* Metric cards grid */}
+      {/* Ghost metric cards — clickable, linked to relevant pages */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+        <MetricCard
+          title="Knowledge Base"
+          value={health?.knowledgeBaseSize ?? 0}
+          subtitle="Learned error patterns"
+          icon={BookOpen}
+          accent="var(--ghost-purple)"
+          accentDim="var(--ghost-purple-dim)"
+          glowClass="glass-card--ghost"
+          delay={0.1}
+          href="/ghost"
+        />
+        <MetricCard
+          title="Fixes Applied"
+          value={health?.recentFixes ?? 0}
+          subtitle="Auto-healed issues"
+          icon={Wrench}
+          accent="var(--status-green)"
+          accentDim="rgba(34, 197, 94, 0.15)"
+          glowClass="glass-card--linus"
+          delay={0.15}
+          href="/ghost"
+        />
+        <MetricCard
+          title="Active Sessions"
+          value={health?.activeConnections ?? (data?.activeSessions ?? 0)}
+          subtitle="Connected DJ apps"
+          icon={MonitorCheck}
+          accent="var(--system-blue)"
+          accentDim="var(--system-blue-dim)"
+          glowClass="glass-card--system"
+          delay={0.2}
+          href="/system"
+        />
+        <MetricCard
+          title="Pending Analysis"
+          value={health?.pendingAnalysis ?? 0}
+          subtitle="Awaiting LLM diagnosis"
+          icon={Clock}
+          accent="var(--brand-yellow)"
+          accentDim="var(--brand-yellow-dim)"
+          glowClass="glass-card--yellow"
+          delay={0.25}
+          href="/ghost"
+        />
+      </div>
+
+      {/* Secondary metrics row */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <MetricCard
           title="Total Users"
@@ -82,7 +130,8 @@ export default function DashboardPage() {
           accent="var(--system-blue)"
           accentDim="var(--system-blue-dim)"
           glowClass="glass-card--system"
-          delay={0.1}
+          delay={0.3}
+          href="/users"
         />
         <MetricCard
           title="Total Tracks"
@@ -92,17 +141,8 @@ export default function DashboardPage() {
           accent="var(--brand-yellow)"
           accentDim="var(--brand-yellow-dim)"
           glowClass="glass-card--yellow"
-          delay={0.15}
-        />
-        <MetricCard
-          title="Active Sessions"
-          value={data?.activeSessions ?? 0}
-          subtitle="Connected DJ apps"
-          icon={Activity}
-          accent="var(--status-green)"
-          accentDim="rgba(34, 197, 94, 0.15)"
-          glowClass="glass-card--linus"
-          delay={0.2}
+          delay={0.35}
+          href="/tracks"
         />
         <MetricCard
           title="Linus Conversations"
@@ -112,7 +152,19 @@ export default function DashboardPage() {
           accent="var(--ghost-purple)"
           accentDim="var(--ghost-purple-dim)"
           glowClass="glass-card--ghost"
-          delay={0.25}
+          delay={0.4}
+          href="/linus"
+        />
+        <MetricCard
+          title="Active Sessions"
+          value={data?.activeSessions ?? 0}
+          subtitle="Logged-in users"
+          icon={Activity}
+          accent="var(--status-green)"
+          accentDim="rgba(34, 197, 94, 0.15)"
+          glowClass="glass-card--linus"
+          delay={0.45}
+          href="/system"
         />
       </div>
 
