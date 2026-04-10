@@ -309,8 +309,8 @@ export default function TracksPage() {
           ))}
         </div>
 
-        {/* Search + refresh */}
-        <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
+        {/* Search + filter + refresh — uniform height */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'stretch' }}>
           <div style={{ position: 'relative', flex: 1, maxWidth: 400 }}>
             <Search size={14} color="#555" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
             <input
@@ -318,9 +318,10 @@ export default function TracksPage() {
               onChange={e => { setSearch(e.target.value); setPage(1) }}
               placeholder="Search by title, artist, genre..."
               style={{
-                width: '100%', padding: '8px 12px 8px 34px', borderRadius: 8,
+                width: '100%', height: '100%', boxSizing: 'border-box',
+                padding: '0 12px 0 34px', borderRadius: 8,
                 background: '#0d0d1a', border: '1px solid #2a2a4e', color: '#ccc',
-                fontSize: 12, outline: 'none',
+                fontSize: 11, outline: 'none',
               }}
             />
           </div>
@@ -329,7 +330,7 @@ export default function TracksPage() {
             value={userFilter}
             onChange={e => { setUserFilter(e.target.value); setPage(1) }}
             style={{
-              padding: '6px 10px', borderRadius: 8, background: '#0d0d1a',
+              padding: '7px 10px', borderRadius: 8, background: '#0d0d1a',
               border: userFilter ? '1px solid rgba(255,255,0,0.3)' : '1px solid #2a2a4e',
               color: userFilter ? '#ffff00' : '#888', fontSize: 11, cursor: 'pointer', outline: 'none',
             }}
@@ -342,9 +343,9 @@ export default function TracksPage() {
 
           <button
             onClick={fetchTracks}
-            style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #2a2a4e', background: 'transparent', color: '#888', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+            style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #2a2a4e', background: 'transparent', color: '#888', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}
           >
-            <RefreshCw size={14} /> Refresh
+            <RefreshCw size={12} /> Refresh
           </button>
 
           {/* Recover user library — select all files for a user and download */}
