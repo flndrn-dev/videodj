@@ -46,7 +46,9 @@ function GaugeRing({ value, max, label, accent, size = 120 }: {
   const radius = (size - 12) / 2
   const circ = 2 * Math.PI * radius
   const offset = circ - (pct / 100) * circ
-  const color = pct > 90 ? 'var(--status-red)' : pct > 70 ? 'var(--status-amber)' : accent
+  // Only show warning colors for large heaps — small heaps at 90%+ is normal Node.js behavior
+  const isLargeAllocation = max > 256 // MB
+  const color = isLargeAllocation && pct > 90 ? 'var(--status-red)' : isLargeAllocation && pct > 70 ? 'var(--status-amber)' : accent
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -173,7 +175,7 @@ export default function SystemPage() {
               </div>
               <div className="px-3 py-3 rounded-lg" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
                 <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Usage</span>
-                <p className="text-lg font-bold font-mono" style={{ color: heapUsedMB / heapTotalMB > 0.9 ? 'var(--status-red)' : heapUsedMB / heapTotalMB > 0.7 ? 'var(--status-amber)' : 'var(--status-green)' }}>
+                <p className="text-lg font-bold font-mono" style={{ color: heapTotalMB > 256 && heapUsedMB / heapTotalMB > 0.9 ? 'var(--status-red)' : heapTotalMB > 256 && heapUsedMB / heapTotalMB > 0.7 ? 'var(--status-amber)' : 'var(--status-green)' }}>
                   {((heapUsedMB / heapTotalMB) * 100).toFixed(1)}%
                 </p>
               </div>
@@ -183,11 +185,11 @@ export default function SystemPage() {
               </div>
             </div>
             <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-[10px]" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
-              {heapUsedMB / heapTotalMB > 0.9
-                ? <><AlertTriangle size={12} style={{ color: 'var(--status-red)' }} /> <span style={{ color: 'var(--status-red)' }}>Critical: Heap usage above 90%. Consider restarting the service or increasing memory.</span></>
-                : heapUsedMB / heapTotalMB > 0.7
-                ? <><AlertTriangle size={12} style={{ color: 'var(--status-amber)' }} /> <span style={{ color: 'var(--status-amber)' }}>Warning: Heap usage above 70%. Monitor for potential memory pressure.</span></>
-                : <><CheckCircle size={12} style={{ color: 'var(--status-green)' }} /> <span style={{ color: 'var(--status-green)' }}>Healthy: Heap memory usage is within normal range.</span></>
+              {heapTotalMB > 256 && heapUsedMB / heapTotalMB > 0.9
+                ? <><AlertTriangle size={12} style={{ color: 'var(--status-red)' }} /> <span style={{ color: 'var(--status-red)' }}>High heap usage ({heapTotalMB.toFixed(0)} MB total). Consider restarting the service if performance degrades.</span></>
+                : heapTotalMB > 256 && heapUsedMB / heapTotalMB > 0.7
+                ? <><AlertTriangle size={12} style={{ color: 'var(--status-amber)' }} /> <span style={{ color: 'var(--status-amber)' }}>Moderate heap usage. Monitor for potential memory pressure.</span></>
+                : <><CheckCircle size={12} style={{ color: 'var(--status-green)' }} /> <span style={{ color: 'var(--status-green)' }}>Healthy: {heapUsedMB.toFixed(0)} MB used of {heapTotalMB.toFixed(0)} MB — normal Node.js behavior{heapUsedMB / heapTotalMB > 0.8 ? ' (V8 will expand heap as needed)' : ''}.</span></>
               }
             </div>
           </motion.div>
