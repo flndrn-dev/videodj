@@ -34,6 +34,8 @@ export interface Track {
   uploadStatus?: 'uploading' | 'uploaded' | 'failed'
   /** Timestamp (seconds) where music effectively ends (before silence/credits) */
   effectiveEndTime?: number
+  /** Timestamp (seconds) where music effectively starts (after silence/intro noise) */
+  effectiveStartTime?: number
 }
 
 export interface DeckState {

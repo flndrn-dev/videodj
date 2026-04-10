@@ -21,6 +21,8 @@ export interface VideoMeta {
   loudness?: number
   /** Timestamp (seconds) where music effectively ends (before silence/credits) */
   effectiveEndTime?: number
+  /** Timestamp (seconds) where music effectively starts (after silence/intro) */
+  effectiveStartTime?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -335,6 +337,47 @@ async function measureLoudness(file: File): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
+// Effective start detection — find where music actually begins
+// ---------------------------------------------------------------------------
+
+async function detectEffectiveStart(file: File): Promise<number | null> {
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    const ctx = new AudioContext()
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer)
+    const channelData = audioBuffer.getChannelData(0)
+    const sampleRate = audioBuffer.sampleRate
+
+    // Analyze first 30 seconds in 0.5-second windows, walking forward
+    const windowSamples = Math.floor(sampleRate * 0.5) // 0.5 seconds
+    const maxSample = Math.min(channelData.length, sampleRate * 30) // first 30s
+    const MUSIC_THRESHOLD = 0.01 // above this RMS = music has started
+
+    let effectiveStart = 0
+
+    for (let i = 0; i < maxSample; i += windowSamples) {
+      let sum = 0
+      const end = Math.min(i + windowSamples, channelData.length)
+      for (let j = i; j < end; j++) {
+        sum += channelData[j] * channelData[j]
+      }
+      const rms = Math.sqrt(sum / (end - i))
+      if (rms > MUSIC_THRESHOLD) {
+        // Found the first window with music — back up slightly for a clean start
+        effectiveStart = Math.max(0, i / sampleRate - 0.2)
+        break
+      }
+    }
+
+    ctx.close()
+    // Only return if we're trimming more than 1 second of silence
+    return effectiveStart > 1 ? Math.round(effectiveStart * 10) / 10 : null
+  } catch {
+    return null
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Effective end detection — find where music actually stops
 // ---------------------------------------------------------------------------
 
@@ -382,11 +425,12 @@ async function detectEffectiveEnd(file: File): Promise<number | null> {
 
 export async function extractVideoMetadata(file: File): Promise<VideoMeta> {
   // Run tag extraction, video element extraction, and loudness in parallel
-  const [tags, videoInfo, loudness, effectiveEnd] = await Promise.all([
+  const [tags, videoInfo, loudness, effectiveEnd, effectiveStart] = await Promise.all([
     extractTags(file),
     extractFromVideoElement(file),
     measureLoudness(file),
     detectEffectiveEnd(file),
+    detectEffectiveStart(file),
   ])
 
   let bpm = tags.bpm || 0
@@ -418,5 +462,6 @@ export async function extractVideoMetadata(file: File): Promise<VideoMeta> {
     language: tags.language?.toUpperCase() || null,
     loudness: loudness || undefined,
     effectiveEndTime: effectiveEnd || undefined,
+    effectiveStartTime: effectiveStart || undefined,
   }
 }

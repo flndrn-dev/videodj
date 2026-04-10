@@ -348,9 +348,10 @@ export const DeckPanel = forwardRef<DeckPanelHandle, DeckPanelProps>(function De
       // Reset flag so new track can apply initialTime (or start at 0)
       initialTimeApplied.current = false
       vid.src = deck.track.videoUrl
-      // Immediately reset to start — prevents stale position from previous track
-      vid.currentTime = 0
-      setCurrentTime(0)
+      // Start at effective start time (skip silence at beginning)
+      const startAt = deck.track.effectiveStartTime || 0
+      vid.currentTime = startAt
+      setCurrentTime(startAt)
 
       function onLoaded() {
         if (!vid) return
@@ -361,6 +362,12 @@ export const DeckPanel = forwardRef<DeckPanelHandle, DeckPanelProps>(function De
           setCurrentTime(initialTime)
         } else {
           initialTimeApplied.current = true
+          // Seek to effective start (skip silence at beginning)
+          const startAt = deck.track?.effectiveStartTime || 0
+          if (startAt > 0) {
+            vid.currentTime = startAt
+            setCurrentTime(startAt)
+          }
         }
         if (vid.duration && !isNaN(vid.duration)) {
           setVideoDuration(vid.duration)
@@ -895,8 +902,9 @@ export const DeckPanel = forwardRef<DeckPanelHandle, DeckPanelProps>(function De
             onClick={() => {
               onCue()
               const vid = videoRef.current
-              if (vid) { vid.currentTime = 0; vid.pause() }
-              setCurrentTime(0)
+              const cuePoint = deck.track?.effectiveStartTime || 0
+              if (vid) { vid.currentTime = cuePoint; vid.pause() }
+              setCurrentTime(cuePoint)
             }}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.92 }}

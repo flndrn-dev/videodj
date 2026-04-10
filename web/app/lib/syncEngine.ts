@@ -183,6 +183,7 @@ function toDbFields(track: Track): Record<string, unknown> {
     loudness: track.loudness || null,
     thumbnail_url: track.thumbnail || null,
     effective_end_time: track.effectiveEndTime || null,
+    effective_start_time: track.effectiveStartTime || null,
   }
 }
 
@@ -208,6 +209,7 @@ function fromDbRow(row: Record<string, unknown>): Partial<Track> {
     loudness: row.loudness as number | undefined,
     thumbnail: row.thumbnail_url as string | undefined,
     effectiveEndTime: row.effective_end_time as number | undefined,
+    effectiveStartTime: row.effective_start_time as number | undefined,
   }
 }
 
@@ -262,6 +264,8 @@ export async function syncTrackUpdate(trackId: string, updates: Partial<Track>) 
     if (updates.badReason !== undefined) dbUpdates.bad_reason = updates.badReason
     if (updates.loudness !== undefined) dbUpdates.loudness = updates.loudness
     if (updates.minioKey !== undefined) dbUpdates.minio_key = updates.minioKey
+    if (updates.effectiveStartTime !== undefined) dbUpdates.effective_start_time = updates.effectiveStartTime
+    if (updates.effectiveEndTime !== undefined) dbUpdates.effective_end_time = updates.effectiveEndTime
 
     if (Object.keys(dbUpdates).length > 0) {
       await fetch('/api/tracks', {
