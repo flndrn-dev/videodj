@@ -56,6 +56,18 @@ export default function TracksPage() {
   const [bulkTesting, setBulkTesting] = useState(false)
   const [bulkTestProgress, setBulkTestProgress] = useState({ done: 0, total: 0, ok: 0, broken: 0 })
 
+  const flagTrackBad = async (trackId: string, bad: boolean, reason?: string) => {
+    await fetch('/api/tracks', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: trackId, bad_file: bad, bad_reason: bad ? (reason || 'Failed playability test') : null }),
+    })
+    setTracks(prev => prev.map(t => t.id === trackId
+      ? { ...t, bad_file: bad, bad_reason: bad ? (reason || 'Failed playability test') : undefined }
+      : t
+    ))
+  }
+
   const testTrack = async (trackId: string, minioKey: string) => {
     setTestStatus(prev => ({ ...prev, [trackId]: 'testing' }))
     try {
@@ -65,7 +77,11 @@ export default function TracksPage() {
         body: JSON.stringify({ action: 'test', minioKey }),
       })
       const data = await res.json()
-      if (!data.streamUrl) { setTestStatus(prev => ({ ...prev, [trackId]: 'broken' })); return }
+      if (!data.streamUrl) {
+        setTestStatus(prev => ({ ...prev, [trackId]: 'broken' }))
+        await flagTrackBad(trackId, true, 'File missing from storage')
+        return
+      }
 
       const video = document.createElement('video')
       video.crossOrigin = 'anonymous'
@@ -80,8 +96,15 @@ export default function TracksPage() {
 
       video.src = ''
       setTestStatus(prev => ({ ...prev, [trackId]: result }))
+
+      if (result === 'broken') {
+        await flagTrackBad(trackId, true, 'Video failed to load')
+      } else if (tracks.find(t => t.id === trackId)?.bad_file) {
+        await flagTrackBad(trackId, false)
+      }
     } catch {
       setTestStatus(prev => ({ ...prev, [trackId]: 'broken' }))
+      await flagTrackBad(trackId, true, 'Test error — network or storage')
     }
   }
 
@@ -103,7 +126,11 @@ export default function TracksPage() {
           body: JSON.stringify({ action: 'test', minioKey: track.minio_key }),
         })
         const data = await res.json()
-        if (!data.streamUrl) { setTestStatus(prev => ({ ...prev, [track.id]: 'broken' })); broken++; return }
+        if (!data.streamUrl) {
+          setTestStatus(prev => ({ ...prev, [track.id]: 'broken' })); broken++
+          await flagTrackBad(track.id, true, 'File missing from storage')
+          done++; setBulkTestProgress({ done, total: toTest.length, ok, broken }); return
+        }
 
         const video = document.createElement('video')
         video.crossOrigin = 'anonymous'
@@ -116,9 +143,16 @@ export default function TracksPage() {
         })
         video.src = ''
         setTestStatus(prev => ({ ...prev, [track.id]: result }))
-        if (result === 'ok') ok++; else broken++
+        if (result === 'ok') {
+          ok++
+          if (track.bad_file) await flagTrackBad(track.id, false)
+        } else {
+          broken++
+          await flagTrackBad(track.id, true, 'Video failed to load')
+        }
       } catch {
         setTestStatus(prev => ({ ...prev, [track.id]: 'broken' })); broken++
+        await flagTrackBad(track.id, true, 'Test error — network or storage')
       }
       done++
       setBulkTestProgress({ done, total: toTest.length, ok, broken })
