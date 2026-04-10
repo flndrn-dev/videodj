@@ -16,7 +16,7 @@ export async function PUT(
   const pool = await getPool()
   try {
     const { id } = await params
-    const { name, email, role, status, password_hash } = await req.json()
+    const { name, email, role, roles, status, password_hash } = await req.json()
 
     const fields: string[] = []
     const values: unknown[] = []
@@ -25,6 +25,7 @@ export async function PUT(
     if (name !== undefined) { fields.push(`name = $${idx}`); values.push(name); idx++ }
     if (email !== undefined) { fields.push(`email = $${idx}`); values.push(email); idx++ }
     if (role !== undefined) { fields.push(`role = $${idx}`); values.push(role); idx++ }
+    if (roles !== undefined) { fields.push(`roles = $${idx}`); values.push(roles); idx++ }
     if (status !== undefined) { fields.push(`status = $${idx}`); values.push(status); idx++ }
     if (password_hash !== undefined) { fields.push(`password_hash = $${idx}`); values.push(password_hash); idx++ }
 

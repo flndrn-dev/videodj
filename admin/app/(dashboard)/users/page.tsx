@@ -4,11 +4,14 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Users, UserPlus, Eye, EyeOff, Trash2, Mail, X, Pencil, KeyRound, Copy, Check, PauseCircle, PlayCircle } from 'lucide-react'
 
+type Role = 'admin' | 'support_agent' | 'beta_tester' | 'subscriber' | 'bookkeeper'
+
 interface User {
   id: string
   email: string
   name: string
-  role: 'admin' | 'support_agent' | 'beta_tester' | 'subscriber'
+  role: Role
+  roles: Role[]
   status: 'active' | 'invited' | 'disabled'
   avatar_url: string | null
   invited_by: string | null
@@ -18,11 +21,20 @@ interface User {
   updated_at: string
 }
 
+const ALL_ROLES: { value: Role; label: string }[] = [
+  { value: 'admin', label: 'Admin' },
+  { value: 'support_agent', label: 'Support Agent' },
+  { value: 'beta_tester', label: 'Beta Tester' },
+  { value: 'subscriber', label: 'Subscriber' },
+  { value: 'bookkeeper', label: 'Bookkeeper' },
+]
+
 const roleBadgeColors: Record<string, { bg: string; text: string }> = {
   admin: { bg: 'var(--brand-yellow-dim)', text: 'var(--brand-yellow)' },
   support_agent: { bg: 'var(--system-blue-dim)', text: 'var(--system-blue)' },
   beta_tester: { bg: 'var(--ghost-purple-dim)', text: 'var(--ghost-purple)' },
   subscriber: { bg: 'var(--linus-green-dim)', text: 'var(--linus-green)' },
+  bookkeeper: { bg: 'rgba(249,115,22,0.15)', text: '#f97316' },
 }
 
 const statusDotColors: Record<string, string> = {
@@ -50,14 +62,14 @@ export default function UsersPage() {
   const [showInvite, setShowInvite] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteName, setInviteName] = useState('')
-  const [inviteRole, setInviteRole] = useState<User['role']>('beta_tester')
+  const [inviteRoles, setInviteRoles] = useState<Role[]>(['beta_tester'])
   const [filter, setFilter] = useState('all')
 
   // Edit modal
   const [editUser, setEditUser] = useState<User | null>(null)
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
-  const [editRole, setEditRole] = useState<User['role']>('subscriber')
+  const [editRoles, setEditRoles] = useState<Role[]>([])
 
   // Password reset modal
   const [resetUser, setResetUser] = useState<User | null>(null)
@@ -77,7 +89,7 @@ export default function UsersPage() {
     const res = await fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: inviteEmail, name: inviteName || inviteEmail.split('@')[0], role: inviteRole }),
+      body: JSON.stringify({ email: inviteEmail, name: inviteName || inviteEmail.split('@')[0], role: inviteRoles[0] || 'subscriber', roles: inviteRoles }),
     })
     if (!res.ok) return
     const data = await res.json()
@@ -108,15 +120,24 @@ export default function UsersPage() {
     setEditUser(user)
     setEditName(user.name)
     setEditEmail(user.email)
-    setEditRole(user.role)
+    setEditRoles(user.roles?.length > 0 ? user.roles : [user.role])
+  }
+
+  const toggleRole = (role: Role, list: Role[], setter: (r: Role[]) => void) => {
+    if (list.includes(role)) {
+      if (list.length > 1) setter(list.filter(r => r !== role)) // must keep at least one
+    } else {
+      setter([...list, role])
+    }
   }
 
   const saveEdit = async () => {
     if (!editUser) return
+    const primaryRole = editRoles.includes('admin') ? 'admin' : editRoles[0] || 'subscriber'
     const res = await fetch(`/api/users/${editUser.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: editName, email: editEmail, role: editRole }),
+      body: JSON.stringify({ name: editName, email: editEmail, role: primaryRole, roles: editRoles }),
     })
     if (!res.ok) return
     const data = await res.json()
@@ -149,7 +170,7 @@ export default function UsersPage() {
     setTimeout(() => setPasswordCopied(false), 2000)
   }
 
-  const filtered = filter === 'all' ? users : users.filter(u => u.role === filter)
+  const filtered = filter === 'all' ? users : users.filter(u => u.roles?.includes(filter as Role) || u.role === filter)
 
   return (
     <div className="space-y-6">
@@ -170,7 +191,7 @@ export default function UsersPage() {
 
       {/* Filters */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="flex gap-2">
-        {['all', 'admin', 'support_agent', 'beta_tester', 'subscriber'].map(role => (
+        {['all', 'admin', 'support_agent', 'beta_tester', 'subscriber', 'bookkeeper'].map(role => (
           <button key={role} onClick={() => setFilter(role)}
             className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
             style={{
@@ -205,10 +226,14 @@ export default function UsersPage() {
                 <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{user.email}</p>
               </div>
             </div>
-            <span className="text-[10px] px-2 py-1 rounded-md font-semibold uppercase tracking-wider w-fit"
-              style={{ background: roleBadgeColors[user.role]?.bg, color: roleBadgeColors[user.role]?.text }}>
-              {user.role.replace(/_/g, ' ')}
-            </span>
+            <div className="flex flex-wrap gap-1">
+              {(user.roles?.length > 0 ? user.roles : [user.role]).map(r => (
+                <span key={r} className="text-[9px] px-1.5 py-0.5 rounded-md font-semibold uppercase tracking-wider"
+                  style={{ background: roleBadgeColors[r]?.bg || 'var(--bg-elevated)', color: roleBadgeColors[r]?.text || 'var(--text-tertiary)' }}>
+                  {r.replace(/_/g, ' ')}
+                </span>
+              ))}
+            </div>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full" style={{ background: statusDotColors[user.status] }} />
               <span className="text-xs capitalize" style={{ color: 'var(--text-secondary)' }}>{user.status}</span>
@@ -276,19 +301,28 @@ export default function UsersPage() {
                     className="w-full px-4 py-3 rounded-xl text-sm outline-none" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }} />
                 </div>
                 <div>
-                  <label className="text-xs uppercase tracking-wider font-medium block mb-2" style={{ color: 'var(--text-tertiary)' }}>Role</label>
+                  <label className="text-xs uppercase tracking-wider font-medium block mb-2" style={{ color: 'var(--text-tertiary)' }}>
+                    Roles <span className="normal-case text-[9px]" style={{ color: 'var(--text-tertiary)' }}>(select multiple)</span>
+                  </label>
                   <div className="grid grid-cols-2 gap-2">
-                    {(['beta_tester', 'support_agent', 'subscriber', 'admin'] as const).map(role => (
-                      <button key={role} onClick={() => setInviteRole(role)}
-                        className="px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-all"
-                        style={{
-                          background: inviteRole === role ? roleBadgeColors[role].bg : 'var(--bg-tertiary)',
-                          color: inviteRole === role ? roleBadgeColors[role].text : 'var(--text-tertiary)',
-                          border: `1px solid ${inviteRole === role ? `${roleBadgeColors[role].text}33` : 'var(--border-primary)'}`,
-                        }}>
-                        {role.replace(/_/g, ' ')}
-                      </button>
-                    ))}
+                    {ALL_ROLES.map(({ value, label }) => {
+                      const active = inviteRoles.includes(value)
+                      return (
+                        <button key={value} onClick={() => toggleRole(value, inviteRoles, setInviteRoles)}
+                          className="px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-all flex items-center gap-2"
+                          style={{
+                            background: active ? roleBadgeColors[value].bg : 'var(--bg-tertiary)',
+                            color: active ? roleBadgeColors[value].text : 'var(--text-tertiary)',
+                            border: `1px solid ${active ? `${roleBadgeColors[value].text}33` : 'var(--border-primary)'}`,
+                          }}>
+                          <div className="w-3.5 h-3.5 rounded border flex items-center justify-center"
+                            style={{ borderColor: active ? roleBadgeColors[value].text : 'var(--border-secondary)', background: active ? roleBadgeColors[value].text : 'transparent' }}>
+                            {active && <Check size={10} style={{ color: 'var(--bg-primary)' }} />}
+                          </div>
+                          {label}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
                 <button onClick={handleInvite} disabled={!inviteEmail}
@@ -327,19 +361,28 @@ export default function UsersPage() {
                     className="w-full px-4 py-3 rounded-xl text-sm outline-none" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }} />
                 </div>
                 <div>
-                  <label className="text-xs uppercase tracking-wider font-medium block mb-2" style={{ color: 'var(--text-tertiary)' }}>Role</label>
+                  <label className="text-xs uppercase tracking-wider font-medium block mb-2" style={{ color: 'var(--text-tertiary)' }}>
+                    Roles <span className="normal-case text-[9px]" style={{ color: 'var(--text-tertiary)' }}>(select multiple)</span>
+                  </label>
                   <div className="grid grid-cols-2 gap-2">
-                    {(['beta_tester', 'support_agent', 'subscriber', 'admin'] as const).map(role => (
-                      <button key={role} onClick={() => setEditRole(role)}
-                        className="px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-all"
-                        style={{
-                          background: editRole === role ? roleBadgeColors[role].bg : 'var(--bg-tertiary)',
-                          color: editRole === role ? roleBadgeColors[role].text : 'var(--text-tertiary)',
-                          border: `1px solid ${editRole === role ? `${roleBadgeColors[role].text}33` : 'var(--border-primary)'}`,
-                        }}>
-                        {role.replace(/_/g, ' ')}
-                      </button>
-                    ))}
+                    {ALL_ROLES.map(({ value, label }) => {
+                      const active = editRoles.includes(value)
+                      return (
+                        <button key={value} onClick={() => toggleRole(value, editRoles, setEditRoles)}
+                          className="px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-all flex items-center gap-2"
+                          style={{
+                            background: active ? roleBadgeColors[value].bg : 'var(--bg-tertiary)',
+                            color: active ? roleBadgeColors[value].text : 'var(--text-tertiary)',
+                            border: `1px solid ${active ? `${roleBadgeColors[value].text}33` : 'var(--border-primary)'}`,
+                          }}>
+                          <div className="w-3.5 h-3.5 rounded border flex items-center justify-center"
+                            style={{ borderColor: active ? roleBadgeColors[value].text : 'var(--border-secondary)', background: active ? roleBadgeColors[value].text : 'transparent' }}>
+                            {active && <Check size={10} style={{ color: 'var(--bg-primary)' }} />}
+                          </div>
+                          {label}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
                 <button onClick={saveEdit}

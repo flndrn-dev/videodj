@@ -26,17 +26,20 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const pool = await getPool()
   try {
-    const { email, name, role } = await req.json()
+    const { email, name, role, roles } = await req.json()
 
     if (!email) {
       return NextResponse.json({ error: 'email is required' }, { status: 400 })
     }
 
+    const userRoles = roles || (role ? [role] : ['subscriber'])
+    const primaryRole = role || userRoles[0] || 'subscriber'
+
     const result = await pool.query(
-      `INSERT INTO users (email, name, role, status)
-       VALUES ($1, $2, $3, 'invited')
+      `INSERT INTO users (email, name, role, roles, status)
+       VALUES ($1, $2, $3, $4, 'invited')
        RETURNING *`,
-      [email, name || null, role || 'user']
+      [email, name || null, primaryRole, userRoles]
     )
 
     return NextResponse.json({ user: result.rows[0] }, { status: 201 })
