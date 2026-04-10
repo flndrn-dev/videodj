@@ -21,6 +21,7 @@ interface UserProfile {
     address1?: string
     address2?: string
     postalCode?: string
+    avatar?: string
   }
 }
 
