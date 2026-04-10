@@ -14,7 +14,7 @@ async function getUserIdFromSession(req: NextRequest): Promise<string | null> {
     'SELECT user_id FROM auth_sessions WHERE token = $1 AND expires_at > NOW()',
     [session.value]
   )
-  return result.rows[0]?.user_id || null
+  return (result.rows[0]?.user_id as string) || null
 }
 
 export async function GET(req: NextRequest) {
