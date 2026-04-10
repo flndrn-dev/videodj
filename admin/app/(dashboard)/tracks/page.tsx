@@ -53,6 +53,8 @@ export default function TracksPage() {
   const [userFilter, setUserFilter] = useState('')
   const [recovering, setRecovering] = useState(false)
   const [testStatus, setTestStatus] = useState<Record<string, 'idle' | 'testing' | 'ok' | 'broken'>>({})
+  const [bulkTesting, setBulkTesting] = useState(false)
+  const [bulkTestProgress, setBulkTestProgress] = useState({ done: 0, total: 0, ok: 0, broken: 0 })
 
   const testTrack = async (trackId: string, minioKey: string) => {
     setTestStatus(prev => ({ ...prev, [trackId]: 'testing' }))
@@ -81,6 +83,54 @@ export default function TracksPage() {
     } catch {
       setTestStatus(prev => ({ ...prev, [trackId]: 'broken' }))
     }
+  }
+
+  const handleBulkTest = async () => {
+    const toTest = tracks.filter(t => selected.has(t.id) && t.minio_key)
+    if (toTest.length === 0) return
+    setBulkTesting(true)
+    setBulkTestProgress({ done: 0, total: toTest.length, ok: 0, broken: 0 })
+
+    // Test 3 at a time for speed
+    const CONCURRENCY = 3
+    let ok = 0, broken = 0, done = 0
+
+    const testOne = async (track: TrackRow) => {
+      setTestStatus(prev => ({ ...prev, [track.id]: 'testing' }))
+      try {
+        const res = await fetch('/api/tracks', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'test', minioKey: track.minio_key }),
+        })
+        const data = await res.json()
+        if (!data.streamUrl) { setTestStatus(prev => ({ ...prev, [track.id]: 'broken' })); broken++; return }
+
+        const video = document.createElement('video')
+        video.crossOrigin = 'anonymous'
+        video.preload = 'metadata'
+        const result = await new Promise<'ok' | 'broken'>((resolve) => {
+          const timeout = setTimeout(() => resolve('broken'), 8000)
+          video.onloadedmetadata = () => { clearTimeout(timeout); resolve('ok') }
+          video.onerror = () => { clearTimeout(timeout); resolve('broken') }
+          video.src = data.streamUrl
+        })
+        video.src = ''
+        setTestStatus(prev => ({ ...prev, [track.id]: result }))
+        if (result === 'ok') ok++; else broken++
+      } catch {
+        setTestStatus(prev => ({ ...prev, [track.id]: 'broken' })); broken++
+      }
+      done++
+      setBulkTestProgress({ done, total: toTest.length, ok, broken })
+    }
+
+    // Process in batches of CONCURRENCY
+    for (let i = 0; i < toTest.length; i += CONCURRENCY) {
+      const batch = toTest.slice(i, i + CONCURRENCY)
+      await Promise.all(batch.map(testOne))
+    }
+
+    setBulkTesting(false)
   }
 
   const toggleSelect = (id: string) => {
@@ -346,6 +396,15 @@ export default function TracksPage() {
             background: 'rgba(255,255,0,0.06)', border: '1px solid rgba(255,255,0,0.15)', borderRadius: 8,
           }}>
             <span style={{ fontSize: 11, color: '#ffff00', fontWeight: 600 }}>{selected.size} selected</span>
+            <button onClick={handleBulkTest} disabled={bulkTesting}
+              style={{ padding: '4px 14px', borderRadius: 6, background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', color: '#a855f7', cursor: 'pointer', fontSize: 10, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, opacity: bulkTesting ? 0.5 : 1 }}>
+              <Play size={12} /> {bulkTesting ? `Testing ${bulkTestProgress.done}/${bulkTestProgress.total}...` : 'Test Playable'}
+            </button>
+            {bulkTesting && (
+              <span style={{ fontSize: 9, color: '#888', fontFamily: 'var(--font-mono)' }}>
+                {bulkTestProgress.ok} ok / {bulkTestProgress.broken} broken
+              </span>
+            )}
             <button onClick={handleBulkDownload} disabled={downloading}
               style={{ padding: '4px 14px', borderRadius: 6, background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.3)', color: '#4ade80', cursor: 'pointer', fontSize: 10, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, opacity: downloading ? 0.5 : 1 }}>
               <Download size={12} /> {downloading ? 'Downloading...' : 'Download Selected'}
