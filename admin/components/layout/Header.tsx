@@ -42,7 +42,10 @@ interface Notification {
 export function Header() {
   const pathname = usePathname()
   const router = useRouter()
-  const page = pageTitles[pathname] || pageTitles['/']
+  // Match exact path, or parent path for detail pages like /users/[id]
+  const page = pageTitles[pathname]
+    || Object.entries(pageTitles).find(([key]) => key !== '/' && pathname.startsWith(key + '/'))?.[1]
+    || pageTitles['/']
 
   // Search
   const [searchOpen, setSearchOpen] = useState(false)

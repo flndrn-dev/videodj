@@ -4,10 +4,10 @@ export function proxy(request: NextRequest) {
   const session = request.cookies.get('admin_session')
   const { pathname } = request.nextUrl
 
-  // Allow auth routes and static assets
+  // Allow auth routes, all API routes, and static assets
   if (
     pathname.startsWith('/auth') ||
-    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
     pathname === '/icon.svg'
