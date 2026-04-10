@@ -213,33 +213,33 @@ export default function UsersPage() {
               className="glass-card glass-card--yellow p-5 transition-colors"
               onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,0,0.2)' }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-primary)' }}>
-              <div className="flex items-start gap-4">
+              <div className="flex items-center gap-4">
                 {/* Avatar */}
-                <div className="w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold shrink-0"
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0"
                   style={{ background: roleBadgeColors[user.role]?.bg, color: roleBadgeColors[user.role]?.text, border: `1px solid ${roleBadgeColors[user.role]?.text}30` }}>
                   {user.name.charAt(0).toUpperCase()}
                 </div>
 
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3 mb-1">
+                {/* Name + email */}
+                <div className="shrink-0" style={{ width: 180 }}>
+                  <div className="flex items-center gap-2">
                     <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{user.name}</p>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full" style={{ background: statusDotColors[user.status] }} />
-                      <span className="text-[10px] capitalize" style={{ color: 'var(--text-secondary)' }}>{user.status}</span>
+                    <div className="flex items-center gap-1">
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ background: statusDotColors[user.status] }} />
+                      <span className="text-[9px] capitalize" style={{ color: 'var(--text-secondary)' }}>{user.status}</span>
                     </div>
                   </div>
-                  <p className="text-[11px] mb-3" style={{ color: 'var(--text-tertiary)' }}>{user.email}</p>
+                  <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{user.email}</p>
+                </div>
 
-                  {/* Roles — wide, 2-row grid */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {userRoles.map(r => (
-                      <span key={r} className="text-[10px] px-2.5 py-1 rounded-lg font-semibold uppercase tracking-wider"
-                        style={{ background: roleBadgeColors[r]?.bg || 'var(--bg-elevated)', color: roleBadgeColors[r]?.text || 'var(--text-tertiary)', border: `1px solid ${roleBadgeColors[r]?.text || 'var(--border-secondary)'}25` }}>
-                        {r.replace(/_/g, ' ')}
-                      </span>
-                    ))}
-                  </div>
+                {/* Roles — center, takes remaining space */}
+                <div className="flex-1 flex flex-wrap gap-1.5 min-w-0">
+                  {userRoles.map(r => (
+                    <span key={r} className="text-[10px] px-2.5 py-1 rounded-lg font-semibold uppercase tracking-wider"
+                      style={{ background: roleBadgeColors[r]?.bg || 'var(--bg-elevated)', color: roleBadgeColors[r]?.text || 'var(--text-tertiary)', border: `1px solid ${roleBadgeColors[r]?.text || 'var(--border-secondary)'}25` }}>
+                      {r.replace(/_/g, ' ')}
+                    </span>
+                  ))}
                 </div>
 
                 {/* Stats */}
@@ -257,7 +257,7 @@ export default function UsersPage() {
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-0.5 shrink-0 ml-2">
+                <div className="flex items-center gap-0.5 shrink-0">
                   <button onClick={() => openEdit(user)} title="Edit user" className="p-2 rounded-lg transition-colors"
                     style={{ color: 'var(--brand-yellow)' }}
                     onMouseEnter={e => { e.currentTarget.style.background = 'var(--brand-yellow-dim)' }}
