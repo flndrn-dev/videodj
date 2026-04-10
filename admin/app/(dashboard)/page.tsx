@@ -1,13 +1,50 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Ghost, Bot, Server, Users, Headset, Lightbulb, DollarSign, Activity } from 'lucide-react'
+import { Ghost, Bot, Music, Users, Activity, MessageSquare } from 'lucide-react'
 import { MetricCard } from '@/components/dashboard/MetricCard'
 import { Heartbeat } from '@/components/ghost/Heartbeat'
 import { useGhostHealth } from '@/app/hooks/useGhostHealth'
 
+interface DashboardData {
+  totalUsers: number
+  totalTracks: number
+  activeSessions: number
+  totalConversations: number
+  recentTracks: { id: string; title: string; artist: string; created_at: string }[]
+  recentUsers: { id: string; name: string; email: string; last_active: string }[]
+  recentConversations: { id: string; summary: string; message_count: number; created_at: string }[]
+}
+
+function timeAgo(dateStr: string): string {
+  const now = Date.now()
+  const then = new Date(dateStr).getTime()
+  const diff = now - then
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  return new Date(dateStr).toLocaleDateString()
+}
+
 export default function DashboardPage() {
-  const { health, loading } = useGhostHealth()
+  const { health, loading: ghostLoading } = useGhostHealth()
+  const [data, setData] = useState<DashboardData | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/dashboard')
+      .then((res) => res.json())
+      .then((json) => {
+        if (!json.error) setData(json)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
 
   return (
     <div className="space-y-8">
@@ -38,50 +75,50 @@ export default function DashboardPage() {
       {/* Metric cards grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <MetricCard
-          title="Knowledge Base"
-          value={health?.knowledgeBaseSize || 0}
-          subtitle="Learned error patterns"
-          icon={Ghost}
-          accent="var(--ghost-purple)"
-          accentDim="var(--ghost-purple-dim)"
-          glowClass="glass-card--ghost"
-          delay={0.1}
-        />
-        <MetricCard
-          title="Fixes Applied"
-          value={health?.recentFixes || 0}
-          subtitle="Auto-healed issues"
-          icon={Activity}
-          accent="var(--status-green)"
-          accentDim="rgba(34, 197, 94, 0.15)"
-          glowClass="glass-card--linus"
-          delay={0.15}
-        />
-        <MetricCard
-          title="Active Sessions"
-          value={health?.activeConnections || 0}
-          subtitle="Connected DJ apps"
+          title="Total Users"
+          value={data?.totalUsers ?? 0}
+          subtitle="Registered accounts"
           icon={Users}
           accent="var(--system-blue)"
           accentDim="var(--system-blue-dim)"
           glowClass="glass-card--system"
-          delay={0.2}
+          delay={0.1}
         />
         <MetricCard
-          title="Pending Analysis"
-          value={health?.pendingAnalysis || 0}
-          subtitle="Awaiting LLM diagnosis"
-          icon={Bot}
+          title="Total Tracks"
+          value={data?.totalTracks ?? 0}
+          subtitle="In the library"
+          icon={Music}
           accent="var(--brand-yellow)"
           accentDim="var(--brand-yellow-dim)"
           glowClass="glass-card--yellow"
+          delay={0.15}
+        />
+        <MetricCard
+          title="Active Sessions"
+          value={data?.activeSessions ?? 0}
+          subtitle="Connected DJ apps"
+          icon={Activity}
+          accent="var(--status-green)"
+          accentDim="rgba(34, 197, 94, 0.15)"
+          glowClass="glass-card--linus"
+          delay={0.2}
+        />
+        <MetricCard
+          title="Linus Conversations"
+          value={data?.totalConversations ?? 0}
+          subtitle="AI agent chats"
+          icon={Bot}
+          accent="var(--ghost-purple)"
+          accentDim="var(--ghost-purple-dim)"
+          glowClass="glass-card--ghost"
           delay={0.25}
         />
       </div>
 
-      {/* Quick access panels */}
+      {/* Activity panels */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent activity */}
+        {/* Recent tracks */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -92,32 +129,59 @@ export default function DashboardPage() {
             className="text-sm font-semibold uppercase tracking-wider mb-4"
             style={{ color: 'var(--text-tertiary)' }}
           >
-            Recent Ghost Activity
+            Recent Tracks
           </h3>
           <div className="space-y-3">
             {loading ? (
               <div className="flex items-center gap-3 py-8 justify-center">
                 <div
                   className="w-4 h-4 rounded-full animate-pulse"
-                  style={{ background: 'var(--ghost-purple-dim)' }}
+                  style={{ background: 'var(--brand-yellow-dim)' }}
                 />
                 <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
-                  Loading telemetry...
+                  Loading tracks...
                 </span>
               </div>
+            ) : data?.recentTracks && data.recentTracks.length > 0 ? (
+              data.recentTracks.map((track, i) => (
+                <motion.div
+                  key={track.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.35 + i * 0.04, duration: 0.3 }}
+                  className="flex items-center justify-between px-4 py-3 rounded-xl"
+                  style={{
+                    background: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-primary)',
+                  }}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Music size={14} style={{ color: 'var(--brand-yellow)', flexShrink: 0 }} strokeWidth={1.5} />
+                    <span className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+                      {track.artist ? `${track.artist} — ${track.title}` : track.title}
+                    </span>
+                  </div>
+                  <span
+                    className="text-xs ml-3 whitespace-nowrap"
+                    style={{ color: 'var(--text-tertiary)' }}
+                  >
+                    {timeAgo(track.created_at)}
+                  </span>
+                </motion.div>
+              ))
             ) : (
               <div
                 className="flex items-center gap-3 py-8 justify-center"
                 style={{ color: 'var(--text-tertiary)' }}
               >
-                <Ghost size={20} style={{ color: 'var(--ghost-purple)', opacity: 0.5 }} />
-                <span className="text-sm">Ghost is monitoring. Activity will appear here.</span>
+                <Music size={20} style={{ color: 'var(--brand-yellow)', opacity: 0.5 }} />
+                <span className="text-sm">No tracks yet.</span>
               </div>
             )}
           </div>
         </motion.div>
 
-        {/* Quick links */}
+        {/* Recent conversations */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -128,40 +192,60 @@ export default function DashboardPage() {
             className="text-sm font-semibold uppercase tracking-wider mb-4"
             style={{ color: 'var(--text-tertiary)' }}
           >
-            Quick Actions
+            Linus Conversations
           </h3>
           <div className="space-y-2">
-            {[
-              { icon: Users, label: 'Invite Beta Tester', accent: 'var(--brand-yellow)' },
-              { icon: Headset, label: 'Open Tickets', accent: 'var(--brand-yellow)' },
-              { icon: Lightbulb, label: 'New Idea', accent: 'var(--brand-yellow)' },
-              { icon: DollarSign, label: 'Revenue Report', accent: 'var(--brand-yellow)' },
-              { icon: Server, label: 'System Health', accent: 'var(--system-blue)' },
-            ].map((item, i) => (
-              <motion.button
-                key={item.label}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.4 + i * 0.05, duration: 0.3 }}
-                className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm transition-all"
-                style={{
-                  background: 'var(--bg-tertiary)',
-                  border: '1px solid var(--border-primary)',
-                  color: 'var(--text-secondary)',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--border-secondary)'
-                  e.currentTarget.style.background = 'var(--bg-elevated)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--border-primary)'
-                  e.currentTarget.style.background = 'var(--bg-tertiary)'
-                }}
+            {loading ? (
+              <div className="flex items-center gap-3 py-8 justify-center">
+                <div
+                  className="w-4 h-4 rounded-full animate-pulse"
+                  style={{ background: 'var(--ghost-purple-dim)' }}
+                />
+                <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
+                  Loading...
+                </span>
+              </div>
+            ) : data?.recentConversations && data.recentConversations.length > 0 ? (
+              data.recentConversations.map((conv, i) => (
+                <motion.div
+                  key={conv.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.4 + i * 0.05, duration: 0.3 }}
+                  className="flex flex-col gap-1 px-4 py-3 rounded-xl"
+                  style={{
+                    background: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-primary)',
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <MessageSquare size={13} style={{ color: 'var(--ghost-purple)', flexShrink: 0 }} strokeWidth={1.5} />
+                    <span
+                      className="text-sm truncate"
+                      style={{ color: 'var(--text-primary)' }}
+                    >
+                      {conv.summary || 'Untitled conversation'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pl-5">
+                    <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                      {conv.message_count} message{conv.message_count !== 1 ? 's' : ''}
+                    </span>
+                    <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                      {timeAgo(conv.created_at)}
+                    </span>
+                  </div>
+                </motion.div>
+              ))
+            ) : (
+              <div
+                className="flex items-center gap-3 py-8 justify-center"
+                style={{ color: 'var(--text-tertiary)' }}
               >
-                <item.icon size={16} style={{ color: item.accent }} strokeWidth={1.5} />
-                <span>{item.label}</span>
-              </motion.button>
-            ))}
+                <Bot size={20} style={{ color: 'var(--ghost-purple)', opacity: 0.5 }} />
+                <span className="text-sm">No conversations yet.</span>
+              </div>
+            )}
           </div>
         </motion.div>
       </div>

@@ -3,7 +3,19 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Users, UserPlus, Eye, EyeOff, Trash2, Mail, X } from 'lucide-react'
-import { getUsers, addUser, updateUser, deleteUser, type User } from '@/lib/store'
+interface User {
+  id: string
+  email: string
+  name: string
+  role: 'admin' | 'support_agent' | 'beta_tester' | 'subscriber'
+  status: 'active' | 'invited' | 'disabled'
+  avatar_url: string | null
+  invited_by: string | null
+  last_active: string | null
+  sessions_count: number
+  created_at: string
+  updated_at: string
+}
 
 const roleBadgeColors: Record<string, { bg: string; text: string }> = {
   admin: { bg: 'var(--brand-yellow-dim)', text: 'var(--brand-yellow)' },
@@ -26,34 +38,44 @@ export default function UsersPage() {
   const [inviteRole, setInviteRole] = useState<User['role']>('beta_tester')
   const [filter, setFilter] = useState('all')
 
-  useEffect(() => { setUsers(getUsers()) }, [])
+  useEffect(() => {
+    fetch('/api/users').then(r => r.json()).then(data => setUsers(data.users ?? []))
+  }, [])
 
-  const handleInvite = () => {
+  const handleInvite = async () => {
     if (!inviteEmail) return
-    const user = addUser({
-      email: inviteEmail,
-      name: inviteName || inviteEmail.split('@')[0],
-      role: inviteRole,
-      status: 'invited',
-      invitedAt: new Date().toISOString(),
-      lastActive: null,
-      invitedBy: 'DJ Bodhi',
-      sessions: 0,
+    const res = await fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: inviteEmail,
+        name: inviteName || inviteEmail.split('@')[0],
+        role: inviteRole,
+      }),
     })
-    setUsers(prev => [...prev, user])
+    if (!res.ok) return
+    const data = await res.json()
+    setUsers(prev => [...prev, data.user])
     setInviteEmail('')
     setInviteName('')
     setShowInvite(false)
   }
 
-  const toggleStatus = (id: string, status: string) => {
+  const toggleStatus = async (id: string, status: string) => {
     const newStatus = status === 'active' ? 'disabled' : 'active'
-    updateUser(id, { status: newStatus as User['status'] })
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, status: newStatus as User['status'] } : u))
+    const res = await fetch(`/api/users/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus }),
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    setUsers(prev => prev.map(u => u.id === id ? data.user : u))
   }
 
-  const handleDelete = (id: string) => {
-    deleteUser(id)
+  const handleDelete = async (id: string) => {
+    const res = await fetch(`/api/users/${id}`, { method: 'DELETE' })
+    if (!res.ok) return
     setUsers(prev => prev.filter(u => u.id !== id))
   }
 
@@ -127,9 +149,9 @@ export default function UsersPage() {
               <div className="w-2 h-2 rounded-full" style={{ background: statusDotColors[user.status] }} />
               <span className="text-xs capitalize" style={{ color: 'var(--text-secondary)' }}>{user.status}</span>
             </div>
-            <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>{user.sessions}</span>
+            <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>{user.sessions_count}</span>
             <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
-              {user.lastActive ? new Date(user.lastActive).toLocaleDateString() : '—'}
+              {user.last_active ? new Date(user.last_active).toLocaleDateString() : '—'}
             </span>
             <div className="flex items-center gap-1">
               <button onClick={() => toggleStatus(user.id, user.status)} className="p-1.5 rounded-lg" style={{ color: 'var(--text-tertiary)' }}>

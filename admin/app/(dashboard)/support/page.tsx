@@ -3,7 +3,16 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Headset, Plus, X, Send, Circle, Clock, CheckCircle, AlertCircle } from 'lucide-react'
-import { getTickets, addTicket, updateTicket, type Ticket } from '@/lib/store'
+
+interface Ticket {
+  id: string; subject: string; status: string; priority: string;
+  customer_email: string; customer_name: string; assigned_to: string | null;
+  created_at: string; updated_at: string;
+}
+interface TicketMessage {
+  id: string; ticket_id: string; sender: string; text: string;
+  attachments: unknown[]; created_at: string;
+}
 
 const statusConfig: Record<string, { icon: typeof Circle; color: string; bg: string }> = {
   open: { icon: AlertCircle, color: 'var(--status-red)', bg: 'var(--deck-red-dim)' },
@@ -22,50 +31,82 @@ const priorityColors: Record<string, string> = {
 export default function SupportPage() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
+  const [messages, setMessages] = useState<TicketMessage[]>([])
   const [showNew, setShowNew] = useState(false)
   const [newSubject, setNewSubject] = useState('')
   const [newEmail, setNewEmail] = useState('')
   const [newMessage, setNewMessage] = useState('')
-  const [newPriority, setNewPriority] = useState<Ticket['priority']>('medium')
+  const [newPriority, setNewPriority] = useState('medium')
   const [replyText, setReplyText] = useState('')
   const [filter, setFilter] = useState('all')
 
-  useEffect(() => { setTickets(getTickets()) }, [])
+  useEffect(() => {
+    fetch('/api/tickets').then(r => r.json()).then(data => {
+      if (data.tickets) setTickets(data.tickets)
+    }).catch(() => {})
+  }, [])
 
-  const handleCreate = () => {
+  const handleSelectTicket = async (ticket: Ticket) => {
+    setSelectedTicket(ticket)
+    try {
+      const res = await fetch(`/api/tickets/${ticket.id}`)
+      const data = await res.json()
+      if (data.messages) setMessages(data.messages)
+      if (data.ticket) setSelectedTicket(data.ticket)
+    } catch { setMessages([]) }
+  }
+
+  const handleCreate = async () => {
     if (!newSubject || !newEmail) return
-    const ticket = addTicket({
-      subject: newSubject,
-      status: 'open',
-      priority: newPriority,
-      customerEmail: newEmail,
-      customerName: newEmail.split('@')[0],
-      assignedTo: null,
-      messages: newMessage ? [{ sender: newEmail, text: newMessage, timestamp: new Date().toISOString() }] : [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    })
-    setTickets(prev => [ticket, ...prev])
+    try {
+      const res = await fetch('/api/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: newSubject,
+          status: 'open',
+          priority: newPriority,
+          customer_email: newEmail,
+          customer_name: newEmail.split('@')[0],
+          message: newMessage || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (data.ticket) setTickets(prev => [data.ticket, ...prev])
+    } catch { /* ignore */ }
     setNewSubject('')
     setNewEmail('')
     setNewMessage('')
     setShowNew(false)
   }
 
-  const handleReply = () => {
+  const handleReply = async () => {
     if (!replyText || !selectedTicket) return
-    const msg = { sender: 'support@videodj.studio', text: replyText, timestamp: new Date().toISOString() }
-    const updated = { ...selectedTicket, messages: [...selectedTicket.messages, msg], updatedAt: new Date().toISOString() }
-    updateTicket(selectedTicket.id, { messages: updated.messages, updatedAt: updated.updatedAt })
-    setSelectedTicket(updated)
-    setTickets(prev => prev.map(t => t.id === updated.id ? updated : t))
+    try {
+      const res = await fetch(`/api/tickets/${selectedTicket.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sender: 'support@videodj.studio', text: replyText }),
+      })
+      const data = await res.json()
+      if (data.message) setMessages(prev => [...prev, data.message])
+    } catch { /* ignore */ }
     setReplyText('')
   }
 
-  const handleStatusChange = (ticketId: string, status: Ticket['status']) => {
-    updateTicket(ticketId, { status, updatedAt: new Date().toISOString() })
-    setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status } : t))
-    if (selectedTicket?.id === ticketId) setSelectedTicket(prev => prev ? { ...prev, status } : null)
+  const handleStatusChange = async (ticketId: string, status: string) => {
+    try {
+      const res = await fetch(`/api/tickets/${ticketId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      const data = await res.json()
+      if (data.ticket) {
+        setTickets(prev => prev.map(t => t.id === ticketId ? data.ticket : t))
+        if (selectedTicket?.id === ticketId) setSelectedTicket(data.ticket)
+      }
+    } catch { /* ignore */ }
   }
 
   const filtered = filter === 'all' ? tickets : tickets.filter(t => t.status === filter)
@@ -114,7 +155,7 @@ export default function SupportPage() {
               const StatusIcon = statusConfig[ticket.status]?.icon || Circle
               return (
                 <motion.div key={ticket.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.02 }}
-                  onClick={() => setSelectedTicket(ticket)}
+                  onClick={() => handleSelectTicket(ticket)}
                   className="flex items-center gap-4 px-6 py-4 cursor-pointer transition-colors"
                   style={{
                     borderBottom: '1px solid var(--border-primary)',
@@ -125,12 +166,12 @@ export default function SupportPage() {
                   <StatusIcon size={14} style={{ color: statusConfig[ticket.status]?.color, flexShrink: 0 }} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{ticket.subject}</p>
-                    <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{ticket.customerEmail}</p>
+                    <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{ticket.customer_email}</p>
                   </div>
                   <span className="text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold"
                     style={{ color: priorityColors[ticket.priority] }}>{ticket.priority}</span>
                   <span className="text-[10px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
-                    {ticket.messages.length} msg
+                    {selectedTicket?.id === ticket.id ? messages.length : '...'} msg
                   </span>
                 </motion.div>
               )
@@ -146,9 +187,9 @@ export default function SupportPage() {
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{selectedTicket.subject}</h3>
-                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{selectedTicket.customerEmail}</p>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{selectedTicket.customer_email}</p>
                 </div>
-                <select value={selectedTicket.status} onChange={e => handleStatusChange(selectedTicket.id, e.target.value as Ticket['status'])}
+                <select value={selectedTicket.status} onChange={e => handleStatusChange(selectedTicket.id, e.target.value)}
                   className="text-xs px-2 py-1 rounded-lg outline-none cursor-pointer"
                   style={{ background: statusConfig[selectedTicket.status]?.bg, color: statusConfig[selectedTicket.status]?.color, border: 'none' }}>
                   <option value="open">Open</option>
@@ -160,8 +201,8 @@ export default function SupportPage() {
 
               {/* Messages */}
               <div className="space-y-3 max-h-[400px] overflow-y-auto mb-4 pr-1">
-                {selectedTicket.messages.map((msg, i) => (
-                  <div key={i} className={`flex ${msg.sender.includes('videodj') ? 'justify-end' : 'justify-start'}`}>
+                {messages.map((msg) => (
+                  <div key={msg.id} className={`flex ${msg.sender.includes('videodj') ? 'justify-end' : 'justify-start'}`}>
                     <div className="max-w-[85%] px-3 py-2 rounded-xl text-sm"
                       style={{
                         background: msg.sender.includes('videodj') ? 'var(--brand-yellow-dim)' : 'var(--bg-tertiary)',
@@ -169,7 +210,7 @@ export default function SupportPage() {
                       }}>
                       <p>{msg.text}</p>
                       <p className="text-[9px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
-                        {new Date(msg.timestamp).toLocaleTimeString()}
+                        {new Date(msg.created_at).toLocaleTimeString()}
                       </p>
                     </div>
                   </div>

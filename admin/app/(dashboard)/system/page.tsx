@@ -2,17 +2,41 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Server, Cpu, HardDrive, Wifi, Activity, Brain, Zap } from 'lucide-react'
+import { Server, Cpu, HardDrive, Wifi, Activity, Brain, Zap, Database, Clock } from 'lucide-react'
 import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter'
 import { useGhostHealth } from '@/app/hooks/useGhostHealth'
 
-interface SystemStats {
-  cpu: number
-  ram: { used: number; total: number }
-  disk: { used: number; total: number }
+interface SystemApiResponse {
+  node: {
+    version: string
+    uptime: number
+    memory: { rss: number; heapTotal: number; heapUsed: number; external: number }
+  }
+  db: {
+    connected: boolean
+    tables: Record<string, number>
+  }
+  timestamp: string
+}
+
+interface OllamaStats {
   ollamaStatus: string
   ollamaModel: string
   ollamaVersion: string
+}
+
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86400)
+  const hours = Math.floor((seconds % 86400) / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB'
+  return (bytes / 1048576).toFixed(0) + ' MB'
 }
 
 function GaugeRing({ value, max, label, accent, size = 120 }: {
@@ -47,20 +71,44 @@ function GaugeRing({ value, max, label, accent, size = 120 }: {
 
 export default function SystemPage() {
   const { health } = useGhostHealth()
-  const [stats, setStats] = useState<SystemStats>({
-    cpu: 23, ram: { used: 8.2, total: 16 }, disk: { used: 16, total: 193 },
+  const [systemData, setSystemData] = useState<SystemApiResponse | null>(null)
+  const [ollama, setOllama] = useState<OllamaStats>({
     ollamaStatus: 'running', ollamaModel: 'qwen2.5-coder:7b', ollamaVersion: '0.20.2',
   })
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    async function fetchOllama() {
+    async function fetchSystem() {
       try {
         const res = await fetch('/api/system')
-        if (res.ok) setStats(await res.json())
+        if (res.ok) {
+          const data = await res.json()
+          setSystemData(data)
+          // If the API also returns ollama info, use it
+          if (data.ollamaStatus) {
+            setOllama({
+              ollamaStatus: data.ollamaStatus,
+              ollamaModel: data.ollamaModel || ollama.ollamaModel,
+              ollamaVersion: data.ollamaVersion || ollama.ollamaVersion,
+            })
+          }
+        }
       } catch { /* use defaults */ }
+      setLoading(false)
     }
-    fetchOllama()
+    fetchSystem()
   }, [])
+
+  // Derive gauge values from real API data
+  const heapUsedMB = systemData ? systemData.node.memory.heapUsed / 1048576 : 0
+  const heapTotalMB = systemData ? systemData.node.memory.heapTotal / 1048576 : 1
+  const rssMB = systemData ? systemData.node.memory.rss / 1048576 : 0
+  const externalMB = systemData ? systemData.node.memory.external / 1048576 : 0
+
+  const dbConnected = systemData?.db.connected ?? false
+  const tableCounts = systemData?.db.tables ?? {}
+  const nodeVersion = systemData?.node.version ?? '—'
+  const uptime = systemData?.node.uptime ?? 0
 
   return (
     <div className="space-y-8">
@@ -72,9 +120,9 @@ export default function SystemPage() {
       {/* Gauges */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
-          { label: 'CPU', value: stats.cpu, max: 100, icon: Cpu },
-          { label: 'Memory', value: stats.ram.used, max: stats.ram.total, icon: Activity },
-          { label: 'Disk', value: stats.disk.used, max: stats.disk.total, icon: HardDrive },
+          { label: 'Heap Memory', value: heapUsedMB, max: heapTotalMB, icon: Activity, unit: 'MB' },
+          { label: 'RSS Memory', value: rssMB, max: rssMB + 100, icon: Cpu, unit: 'MB' },
+          { label: 'External', value: externalMB, max: Math.max(externalMB * 2, 10), icon: HardDrive, unit: 'MB' },
         ].map((gauge, i) => (
           <motion.div
             key={gauge.label}
@@ -93,10 +141,78 @@ export default function SystemPage() {
               <GaugeRing value={gauge.value} max={gauge.max} label="" accent="var(--system-blue)" />
             </div>
             <p className="text-xs font-mono mt-2" style={{ color: 'var(--text-secondary)' }}>
-              {gauge.value.toFixed(1)} / {gauge.max} {gauge.label === 'CPU' ? '%' : 'GB'}
+              {gauge.value.toFixed(1)} / {gauge.max.toFixed(1)} {gauge.unit}
             </p>
           </motion.div>
         ))}
+      </div>
+
+      {/* Node Info + DB Tables */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Node.js Info */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="glass-card glass-card--system p-6"
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <Clock size={16} style={{ color: 'var(--system-blue)' }} />
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Node.js Runtime</span>
+          </div>
+          <div className="space-y-3">
+            {[
+              { label: 'Version', value: nodeVersion },
+              { label: 'Uptime', value: loading ? '—' : formatUptime(uptime) },
+              { label: 'Heap Used', value: loading ? '—' : formatBytes(systemData?.node.memory.heapUsed ?? 0) },
+              { label: 'Heap Total', value: loading ? '—' : formatBytes(systemData?.node.memory.heapTotal ?? 0) },
+              { label: 'RSS', value: loading ? '—' : formatBytes(systemData?.node.memory.rss ?? 0) },
+            ].map(item => (
+              <div key={item.label} className="flex items-center justify-between py-2"
+                style={{ borderBottom: '1px solid var(--border-primary)' }}>
+                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{item.label}</span>
+                <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>{item.value}</span>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Database Tables */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="glass-card glass-card--system p-6"
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <Database size={16} style={{ color: 'var(--system-blue)' }} />
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Database</span>
+            <span className="ml-auto flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full"
+                style={{ background: loading ? 'var(--status-amber)' : dbConnected ? 'var(--status-green)' : 'var(--status-red)' }} />
+              <span className="text-[10px] font-mono" style={{ color: 'var(--text-secondary)' }}>
+                {loading ? 'checking' : dbConnected ? 'connected' : 'disconnected'}
+              </span>
+            </span>
+          </div>
+          <div className="space-y-3">
+            {Object.keys(tableCounts).length > 0 ? (
+              Object.entries(tableCounts).map(([table, count]) => (
+                <div key={table} className="flex items-center justify-between py-2"
+                  style={{ borderBottom: '1px solid var(--border-primary)' }}>
+                  <span className="text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>{table}</span>
+                  <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-secondary)' }}>
+                    {count.toLocaleString()} rows
+                  </span>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                {loading ? 'Loading...' : 'No table data available'}
+              </p>
+            )}
+          </div>
+        </motion.div>
       </div>
 
       {/* Ollama + Services */}
@@ -105,7 +221,7 @@ export default function SystemPage() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
+          transition={{ delay: 0.3 }}
           className="glass-card glass-card--system p-6"
         >
           <div className="flex items-center gap-2 mb-4">
@@ -113,13 +229,13 @@ export default function SystemPage() {
             <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Ollama</span>
             <span className="ml-auto text-[10px] px-2 py-0.5 rounded-md font-mono"
               style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--status-green)' }}>
-              {stats.ollamaStatus}
+              {ollama.ollamaStatus}
             </span>
           </div>
           <div className="space-y-3">
             {[
-              { label: 'Model', value: stats.ollamaModel },
-              { label: 'Version', value: stats.ollamaVersion },
+              { label: 'Model', value: ollama.ollamaModel },
+              { label: 'Version', value: ollama.ollamaVersion },
               { label: 'Endpoint', value: 'localhost:11434' },
               { label: 'Access', value: 'Docker bridge only (iptables secured)' },
             ].map(item => (
@@ -136,7 +252,7 @@ export default function SystemPage() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
+          transition={{ delay: 0.35 }}
           className="glass-card glass-card--system p-6"
         >
           <div className="flex items-center gap-2 mb-4">
@@ -148,8 +264,8 @@ export default function SystemPage() {
               { name: 'Ghost Server', domain: 'ghost.videodj.studio', status: health ? 'online' : 'checking' },
               { name: 'Dokploy', domain: '187.124.209.17:3000', status: 'online' },
               { name: 'Traefik (SSL)', domain: 'ports 80/443', status: 'online' },
-              { name: 'PostgreSQL', domain: 'ghost-db:5432', status: 'online' },
-              { name: 'Ollama', domain: 'localhost:11434', status: stats.ollamaStatus === 'running' ? 'online' : 'offline' },
+              { name: 'PostgreSQL', domain: 'ghost-db:5432', status: loading ? 'checking' : dbConnected ? 'online' : 'offline' },
+              { name: 'Ollama', domain: 'localhost:11434', status: ollama.ollamaStatus === 'running' ? 'online' : 'offline' },
             ].map(svc => (
               <div key={svc.name} className="flex items-center justify-between py-2"
                 style={{ borderBottom: '1px solid var(--border-primary)' }}>

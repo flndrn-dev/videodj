@@ -17,8 +17,24 @@ interface Conversation {
   created_at: string
 }
 
+interface ModelConfig {
+  provider: string
+  model: string
+  mode: string
+}
+
+const PROVIDER_LABELS: Record<string, string> = {
+  anthropic: 'Anthropic (Claude API)',
+  openai: 'OpenAI',
+  xai: 'xAI (Grok)',
+  deepseek: 'DeepSeek',
+  ollama: 'Ollama (Local)',
+  mock: 'Mock (Demo Mode)',
+}
+
 export default function LinusPage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null)
   const [loading, setLoading] = useState(true)
 
   const fetchConversations = useCallback(async () => {
@@ -27,6 +43,7 @@ export default function LinusPage() {
       if (res.ok) {
         const data = await res.json()
         setConversations(data.conversations || [])
+        if (data.modelConfig) setModelConfig(data.modelConfig)
       }
     } catch (err) {
       console.error('Failed to fetch conversations:', err)
@@ -83,11 +100,10 @@ export default function LinusPage() {
           </h3>
           <div className="space-y-3">
             {[
-              { label: 'Provider', value: 'Anthropic (Claude API)' },
-              { label: 'Model', value: 'claude-sonnet-4-20250514' },
-              { label: 'Mode', value: 'API Key' },
-              { label: 'Fallback', value: 'Ollama/Qwen 2.5 (after KVM8 migration)' },
-              { label: 'Status', value: 'Active' },
+              { label: 'Provider', value: modelConfig ? (PROVIDER_LABELS[modelConfig.provider] || modelConfig.provider) : '...' },
+              { label: 'Model', value: modelConfig?.model || '...' },
+              { label: 'Mode', value: modelConfig?.mode === 'api' ? 'API Key' : (modelConfig?.mode || '...') },
+              { label: 'Status', value: modelConfig ? (modelConfig.provider === 'mock' ? 'Demo Mode' : 'Active') : '...' },
             ].map(item => (
               <div key={item.label} className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid var(--border-primary)' }}>
                 <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{item.label}</span>

@@ -1,0 +1,80 @@
+import { NextRequest, NextResponse } from 'next/server'
+
+async function getPool() {
+  const pg = await import('pg')
+  return new pg.default.Pool({
+    connectionString: process.env.DATABASE_URL!,
+    max: 5,
+  })
+}
+
+// PUT — update user
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const pool = await getPool()
+  try {
+    const { id } = await params
+    const { name, role, status } = await req.json()
+
+    const fields: string[] = []
+    const values: unknown[] = []
+    let idx = 1
+
+    if (name !== undefined) { fields.push(`name = $${idx}`); values.push(name); idx++ }
+    if (role !== undefined) { fields.push(`role = $${idx}`); values.push(role); idx++ }
+    if (status !== undefined) { fields.push(`status = $${idx}`); values.push(status); idx++ }
+
+    if (fields.length === 0) {
+      return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+    }
+
+    fields.push('updated_at = NOW()')
+    values.push(id)
+
+    const result = await pool.query(
+      `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+      values
+    )
+
+    if (result.rowCount === 0) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    return NextResponse.json({ user: result.rows[0] })
+  } catch (err) {
+    console.error('User PUT error:', err)
+    return NextResponse.json({ error: 'Failed to update user' }, { status: 500 })
+  } finally {
+    await pool.end()
+  }
+}
+
+// DELETE — delete user (prevent deleting admins)
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const pool = await getPool()
+  try {
+    const { id } = await params
+
+    // Check if user is admin
+    const userResult = await pool.query('SELECT role FROM users WHERE id = $1', [id])
+    if (userResult.rowCount === 0) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+    if (userResult.rows[0].role === 'admin') {
+      return NextResponse.json({ error: 'Cannot delete admin users' }, { status: 403 })
+    }
+
+    await pool.query('DELETE FROM users WHERE id = $1', [id])
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error('User DELETE error:', err)
+    return NextResponse.json({ error: 'Failed to delete user' }, { status: 500 })
+  } finally {
+    await pool.end()
+  }
+}

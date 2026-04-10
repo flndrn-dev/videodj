@@ -1,9 +1,21 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Lightbulb, Plus, X, GripVertical } from 'lucide-react'
-import { getDevCards, addDevCard, updateDevCard, deleteDevCard, type DevCard } from '@/lib/store'
+import { Lightbulb, Plus, X, GripVertical, Loader2 } from 'lucide-react'
+
+interface DevCard {
+  id: string
+  title: string
+  description: string
+  column: 'ideas' | 'todo' | 'in_progress' | 'testing' | 'done'
+  priority: 'low' | 'medium' | 'high'
+  tags: string[]
+  sort_order: number
+  created_by: string
+  created_at: string
+  updated_at: string
+}
 
 const columns = [
   { id: 'ideas' as const, label: 'Ideas', emoji: '💡' },
@@ -21,6 +33,7 @@ const priorityColors: Record<string, { bg: string; text: string; border: string 
 
 export default function DevZonePage() {
   const [cards, setCards] = useState<DevCard[]>([])
+  const [loading, setLoading] = useState(true)
   const [showNew, setShowNew] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newDesc, setNewDesc] = useState('')
@@ -29,36 +42,75 @@ export default function DevZonePage() {
   const [newTags, setNewTags] = useState('')
   const [draggedCard, setDraggedCard] = useState<string | null>(null)
 
-  useEffect(() => { setCards(getDevCards()) }, [])
+  const fetchCards = useCallback(async () => {
+    try {
+      const res = await fetch('/api/devzone')
+      const data = await res.json()
+      setCards(data.cards || [])
+    } catch (err) {
+      console.error('Failed to fetch dev cards:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  const handleAdd = () => {
+  useEffect(() => { fetchCards() }, [fetchCards])
+
+  const handleAdd = async () => {
     if (!newTitle) return
-    const card = addDevCard({
-      title: newTitle,
-      description: newDesc,
-      column: newColumn,
-      priority: newPriority,
-      tags: newTags.split(',').map(t => t.trim()).filter(Boolean),
-      createdAt: new Date().toISOString(),
-      createdBy: 'DJ Bodhi',
-    })
-    setCards(prev => [...prev, card])
+    try {
+      const res = await fetch('/api/devzone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newTitle,
+          description: newDesc,
+          column: newColumn,
+          priority: newPriority,
+          tags: newTags.split(',').map(t => t.trim()).filter(Boolean),
+          created_by: 'DJ Bodhi',
+        }),
+      })
+      const data = await res.json()
+      if (data.card) {
+        setCards(prev => [...prev, data.card])
+      }
+    } catch (err) {
+      console.error('Failed to create card:', err)
+    }
     setNewTitle('')
     setNewDesc('')
     setNewTags('')
     setShowNew(false)
   }
 
-  const handleDrop = (column: DevCard['column']) => {
+  const handleDrop = async (column: DevCard['column']) => {
     if (!draggedCard) return
-    updateDevCard(draggedCard, { column })
+    // Optimistic update
     setCards(prev => prev.map(c => c.id === draggedCard ? { ...c, column } : c))
+    const cardId = draggedCard
     setDraggedCard(null)
+    try {
+      await fetch('/api/devzone', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: cardId, column }),
+      })
+    } catch (err) {
+      console.error('Failed to update card:', err)
+      fetchCards() // Revert on failure
+    }
   }
 
-  const handleDeleteCard = (id: string) => {
-    deleteDevCard(id)
+  const handleDeleteCard = async (id: string) => {
+    // Optimistic update
     setCards(prev => prev.filter(c => c.id !== id))
+    try {
+      await fetch(`/api/devzone?id=${id}`, { method: 'DELETE' })
+    } catch (err) {
+      console.error('Failed to delete card:', err)
+      fetchCards() // Revert on failure
+    }
   }
 
   return (
@@ -78,6 +130,11 @@ export default function DevZonePage() {
       </motion.div>
 
       {/* Kanban board */}
+      {loading ? (
+        <div className="flex items-center justify-center min-h-[40vh]">
+          <Loader2 size={24} className="animate-spin" style={{ color: 'var(--text-tertiary)' }} />
+        </div>
+      ) : (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 min-h-[40vh] xl:min-h-[60vh]">
         {columns.map((col, ci) => (
           <motion.div
@@ -149,6 +206,7 @@ export default function DevZonePage() {
           </motion.div>
         ))}
       </div>
+      )}
 
       {/* New card modal */}
       <AnimatePresence>

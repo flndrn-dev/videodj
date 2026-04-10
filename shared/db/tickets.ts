@@ -54,7 +54,7 @@ export async function addTicketMessage(ticketId: string, sender: string, text: s
 }
 
 export async function updateTicketStatus(id: string, status: Ticket['status']): Promise<void> {
-  await query('UPDATE tickets SET status = $1, updated_at = NOW() WHERE id = $1', [status, id])
+  await query('UPDATE tickets SET status = $1, updated_at = NOW() WHERE id = $2', [status, id])
 }
 
 export async function assignTicket(id: string, agentId: string): Promise<void> {
