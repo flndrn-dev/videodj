@@ -204,77 +204,93 @@ export default function UsersPage() {
         ))}
       </motion.div>
 
-      {/* Table */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="glass-card glass-card--yellow overflow-hidden">
-        <div className="hidden lg:grid grid-cols-[1fr_120px_90px_70px_90px_160px] gap-4 px-6 py-3 text-[10px] uppercase tracking-wider font-semibold"
-          style={{ color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border-primary)' }}>
-          <span>User</span><span>Role</span><span>Status</span><span>Sessions</span><span>Last Active</span><span>Actions</span>
-        </div>
-        {filtered.map((user, i) => (
-          <motion.div key={user.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}
-            className="flex flex-col lg:grid lg:grid-cols-[1fr_120px_90px_70px_90px_160px] gap-2 lg:gap-4 px-4 lg:px-6 py-4 lg:items-center transition-colors"
-            style={{ borderBottom: '1px solid var(--border-primary)' }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-tertiary)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold"
-                style={{ background: roleBadgeColors[user.role]?.bg, color: roleBadgeColors[user.role]?.text }}>
-                {user.name.charAt(0).toUpperCase()}
+      {/* User cards */}
+      <div className="space-y-3">
+        {filtered.map((user, i) => {
+          const userRoles = user.roles?.length > 0 ? user.roles : [user.role]
+          return (
+            <motion.div key={user.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}
+              className="glass-card glass-card--yellow p-5 transition-colors"
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,0,0.2)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-primary)' }}>
+              <div className="flex items-start gap-4">
+                {/* Avatar */}
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold shrink-0"
+                  style={{ background: roleBadgeColors[user.role]?.bg, color: roleBadgeColors[user.role]?.text, border: `1px solid ${roleBadgeColors[user.role]?.text}30` }}>
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-1">
+                    <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{user.name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full" style={{ background: statusDotColors[user.status] }} />
+                      <span className="text-[10px] capitalize" style={{ color: 'var(--text-secondary)' }}>{user.status}</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] mb-3" style={{ color: 'var(--text-tertiary)' }}>{user.email}</p>
+
+                  {/* Roles — wide, 2-row grid */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {userRoles.map(r => (
+                      <span key={r} className="text-[10px] px-2.5 py-1 rounded-lg font-semibold uppercase tracking-wider"
+                        style={{ background: roleBadgeColors[r]?.bg || 'var(--bg-elevated)', color: roleBadgeColors[r]?.text || 'var(--text-tertiary)', border: `1px solid ${roleBadgeColors[r]?.text || 'var(--border-secondary)'}25` }}>
+                        {r.replace(/_/g, ' ')}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div className="hidden md:flex items-center gap-6 shrink-0 text-right">
+                  <div>
+                    <p className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Sessions</p>
+                    <p className="text-sm font-mono font-bold" style={{ color: 'var(--text-secondary)' }}>{user.sessions_count}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Last Active</p>
+                    <p className="text-[11px] font-mono" style={{ color: 'var(--text-secondary)' }}>
+                      {user.last_active ? new Date(user.last_active).toLocaleDateString() : '—'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-0.5 shrink-0 ml-2">
+                  <button onClick={() => openEdit(user)} title="Edit user" className="p-2 rounded-lg transition-colors"
+                    style={{ color: 'var(--brand-yellow)' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--brand-yellow-dim)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                    <Pencil size={14} />
+                  </button>
+                  <button onClick={() => toggleStatus(user)} title={user.status === 'active' ? 'Pause user' : 'Activate user'}
+                    className="p-2 rounded-lg transition-colors"
+                    style={{ color: user.status === 'active' ? 'var(--status-amber)' : 'var(--status-green)' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-elevated)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                    {user.status === 'active' ? <PauseCircle size={14} /> : <PlayCircle size={14} />}
+                  </button>
+                  <button onClick={() => openResetPassword(user)} title="Reset password" className="p-2 rounded-lg transition-colors"
+                    style={{ color: 'var(--system-blue)' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--system-blue-dim)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                    <KeyRound size={14} />
+                  </button>
+                  {user.role !== 'admin' && (
+                    <button onClick={() => setDeleteConfirm(user.id)} title="Delete user" className="p-2 rounded-lg transition-colors"
+                      style={{ color: 'var(--status-red)' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{user.name}</p>
-                <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{user.email}</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {(user.roles?.length > 0 ? user.roles : [user.role]).map(r => (
-                <span key={r} className="text-[9px] px-1.5 py-0.5 rounded-md font-semibold uppercase tracking-wider"
-                  style={{ background: roleBadgeColors[r]?.bg || 'var(--bg-elevated)', color: roleBadgeColors[r]?.text || 'var(--text-tertiary)' }}>
-                  {r.replace(/_/g, ' ')}
-                </span>
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full" style={{ background: statusDotColors[user.status] }} />
-              <span className="text-xs capitalize" style={{ color: 'var(--text-secondary)' }}>{user.status}</span>
-            </div>
-            <span className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>{user.sessions_count}</span>
-            <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
-              {user.last_active ? new Date(user.last_active).toLocaleDateString() : '—'}
-            </span>
-            {/* Actions */}
-            <div className="flex items-center gap-1">
-              <button onClick={() => openEdit(user)} title="Edit user" className="p-1.5 rounded-lg transition-colors"
-                style={{ color: 'var(--brand-yellow)' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--brand-yellow-dim)' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
-                <Pencil size={13} />
-              </button>
-              <button onClick={() => toggleStatus(user)} title={user.status === 'active' ? 'Pause user' : 'Activate user'}
-                className="p-1.5 rounded-lg transition-colors"
-                style={{ color: user.status === 'active' ? 'var(--status-amber)' : 'var(--status-green)' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-elevated)' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
-                {user.status === 'active' ? <PauseCircle size={13} /> : <PlayCircle size={13} />}
-              </button>
-              <button onClick={() => openResetPassword(user)} title="Reset password" className="p-1.5 rounded-lg transition-colors"
-                style={{ color: 'var(--system-blue)' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--system-blue-dim)' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
-                <KeyRound size={13} />
-              </button>
-              {user.role !== 'admin' && (
-                <button onClick={() => setDeleteConfirm(user.id)} title="Delete user" className="p-1.5 rounded-lg transition-colors"
-                  style={{ color: 'var(--status-red)' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)' }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
-                  <Trash2 size={13} />
-                </button>
-              )}
-            </div>
-          </motion.div>
-        ))}
-      </motion.div>
+            </motion.div>
+          )
+        })}
+      </div>
 
       {/* ── Invite Modal ───────────────────────────────────── */}
       <AnimatePresence>
