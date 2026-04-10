@@ -1214,6 +1214,69 @@ export async function processCommand(
     case '/about':
       return { handled: false, passToAgent: true }
 
+    // Client-only: recommend tracks the user hasn't played much
+    case '/recommend': {
+      if (library.length === 0) {
+        return { handled: true, passToAgent: false, reply: 'Your library is empty — upload some tracks first.' }
+      }
+
+      // Find the user's most-played tracks to extract preferences
+      const sorted = [...library].filter(t => !t.badFile).sort((a, b) => (b.timesPlayed || 0) - (a.timesPlayed || 0))
+      const topPlayed = sorted.slice(0, 10)
+
+      // Extract common genres and BPM range from top played
+      const genreCounts: Record<string, number> = {}
+      let bpmSum = 0
+      let bpmCount = 0
+      for (const t of topPlayed) {
+        if (t.genre) {
+          const g = t.genre.toLowerCase()
+          genreCounts[g] = (genreCounts[g] || 0) + 1
+        }
+        if (t.bpm && t.bpm > 0) {
+          bpmSum += t.bpm
+          bpmCount++
+        }
+      }
+
+      const topGenres = Object.entries(genreCounts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => e[0])
+      const avgBpm = bpmCount > 0 ? bpmSum / bpmCount : 0
+      const bpmLow = avgBpm > 0 ? avgBpm * 0.85 : 0
+      const bpmHigh = avgBpm > 0 ? avgBpm * 1.15 : Infinity
+
+      // Find low-play tracks matching those preferences
+      const candidates = library.filter(t => {
+        if (t.badFile) return false
+        if ((t.timesPlayed || 0) > 2) return false
+        const genreMatch = !topGenres.length || (t.genre && topGenres.includes(t.genre.toLowerCase()))
+        const bpmMatch = !avgBpm || (t.bpm && t.bpm >= bpmLow && t.bpm <= bpmHigh)
+        return genreMatch || bpmMatch
+      })
+
+      // Shuffle and pick 5
+      const shuffled = candidates.sort(() => Math.random() - 0.5).slice(0, 5)
+
+      if (shuffled.length === 0) {
+        return { handled: true, passToAgent: false, reply: 'No underplayed tracks match your listening patterns. Try playing more variety!' }
+      }
+
+      const lines = shuffled.map((t, i) => {
+        const bpmStr = t.bpm ? `${Math.round(t.bpm)} BPM` : 'BPM unknown'
+        const genre = t.genre || 'Unknown genre'
+        return `${i + 1}. ${t.artist || 'Unknown'} — ${t.title} (${bpmStr}, ${genre})`
+      })
+
+      return {
+        handled: true,
+        passToAgent: false,
+        reply: `Based on your listening, try these:\n${lines.join('\n')}`,
+      }
+    }
+
+    // Catalog search — pass to AI for server-side processing
+    case '/catalog':
+      return { handled: false, passToAgent: true }
+
     // Not a recognized command — check if it's a legacy playlist command
     default: {
       // Legacy: /playlist-genre, /playlist-lang, /set, /stream-theme → redirect to /playlist

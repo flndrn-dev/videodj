@@ -120,6 +120,10 @@ export const LINUS_COMMANDS: LinusCommand[] = [
   { command: '/stop-recording', description: 'Stop recording and save the mix', category: 'recording' },
   { command: '/history', description: 'View past DJ sets with tracklists and timestamps', category: 'recording' },
 
+  // Discovery
+  { command: '/recommend', description: 'Suggest 5 tracks from your library you haven\'t played much', category: 'discovery' },
+  { command: '/catalog', args: '<search>', description: 'Search the shared catalog — find tracks other DJs have', category: 'discovery' },
+
   // Help
   { command: '/help', description: 'Open this command reference', category: 'help' },
   { command: '/about', description: 'About Linus AI DJ Agent', category: 'help' },
@@ -131,6 +135,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   mixing: 'Mixing',
   streaming: 'Streaming',
   recording: 'Recording',
+  discovery: 'Discovery',
   help: 'Help',
 }
 
