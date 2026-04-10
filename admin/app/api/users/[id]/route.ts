@@ -21,7 +21,7 @@ export async function GET(
       pool.query('SELECT * FROM users WHERE id = $1', [id]),
       pool.query('SELECT count(*) as count, sum(times_played) as total_plays FROM tracks WHERE user_id = $1', [id]),
       pool.query('SELECT count(*) as count FROM user_playlists WHERE user_id = $1', [id]),
-      pool.query('SELECT count(*) as count, sum(message_count) as total_messages FROM linus_conversations WHERE user_id = $1', [id]),
+      pool.query('SELECT count(*) as count, coalesce(sum(jsonb_array_length(messages)), 0) as total_messages FROM linus_conversations WHERE user_id = $1', [id]),
       pool.query('SELECT count(*) as count FROM auth_sessions WHERE user_id = $1 AND expires_at > NOW()', [id]),
     ])
 

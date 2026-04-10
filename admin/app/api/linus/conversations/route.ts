@@ -16,9 +16,11 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
 
     const result = await pool.query(
-      `SELECT lc.id, lc.user_id, lc.summary, lc.topics, lc.actions,
-              lc.message_count, lc.created_at,
-              u.name as user_name, u.email
+      `SELECT lc.id, lc.user_id, lc.summary, lc.provider, lc.model,
+              jsonb_array_length(lc.messages) as message_count,
+              lc.created_at,
+              u.name as user_name, u.email,
+              ARRAY[]::text[] as topics, ARRAY[]::text[] as actions
        FROM linus_conversations lc
        LEFT JOIN users u ON lc.user_id = u.id
        ORDER BY lc.created_at DESC

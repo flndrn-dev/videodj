@@ -34,7 +34,7 @@ export async function GET() {
          ORDER BY last_active DESC NULLS LAST LIMIT 5`
       ),
       pool.query(
-        `SELECT id, summary, message_count, created_at FROM linus_conversations
+        `SELECT id, summary, jsonb_array_length(messages) as message_count, created_at FROM linus_conversations
          ORDER BY created_at DESC LIMIT 5`
       ),
     ])
