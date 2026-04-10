@@ -334,19 +334,29 @@ export default function ProfilePage() {
           </div>
         </section>
 
-        {/* Save button */}
+        {/* Spacer for sticky save bar */}
+        <div style={{ height: 70 }} />
+      </div>
+
+      {/* Sticky save bar — always visible at bottom */}
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
+        padding: '12px 20px',
+        background: 'linear-gradient(to top, #0b0b14 60%, transparent)',
+        display: 'flex', justifyContent: 'center',
+      }}>
         <motion.button
           onClick={handleSave}
           disabled={saving}
-          whileHover={{ scale: 1.01 }}
-          whileTap={{ scale: 0.98 }}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.97 }}
           style={{
-            width: '100%', padding: '14px 0', borderRadius: 10,
+            width: '100%', maxWidth: 600, padding: '14px 0', borderRadius: 10,
             background: saving ? '#333340' : '#ffff00', border: 'none',
             color: saving ? '#555570' : '#0b0b14',
             fontSize: 13, fontWeight: 800, cursor: saving ? 'not-allowed' : 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            transition: 'background 0.15s, color 0.15s',
+            boxShadow: '0 -4px 20px rgba(0,0,0,0.5)',
           }}
         >
           <Save size={14} />
