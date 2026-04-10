@@ -32,12 +32,12 @@ export async function GET(
     return NextResponse.json({
       user: userResult.rows[0],
       stats: {
-        tracks: parseInt(tracksResult.rows[0].count) || 0,
-        totalPlays: parseInt(tracksResult.rows[0].total_plays) || 0,
-        playlists: parseInt(playlistsResult.rows[0].count) || 0,
-        conversations: parseInt(conversationsResult.rows[0].count) || 0,
-        totalMessages: parseInt(conversationsResult.rows[0].total_messages) || 0,
-        activeSessions: parseInt(sessionsResult.rows[0].count) || 0,
+        tracks: parseInt(String(tracksResult.rows[0].count)) || 0,
+        totalPlays: parseInt(String(tracksResult.rows[0].total_plays)) || 0,
+        playlists: parseInt(String(playlistsResult.rows[0].count)) || 0,
+        conversations: parseInt(String(conversationsResult.rows[0].count)) || 0,
+        totalMessages: parseInt(String(conversationsResult.rows[0].total_messages)) || 0,
+        activeSessions: parseInt(String(sessionsResult.rows[0].count)) || 0,
       },
     })
   } catch (err) {
