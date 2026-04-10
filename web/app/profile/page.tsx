@@ -135,7 +135,11 @@ export default function ProfilePage() {
   const memberSince = user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Unknown'
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0b0b14', color: '#e0e0f0' }}>
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 100,
+      background: '#0b0b14', color: '#e0e0f0',
+      overflow: 'auto',
+    }}>
       <Toaster position="top-right" theme="dark" />
       <div style={{ maxWidth: 640, margin: '0 auto', padding: '40px 24px 80px' }}>
         {/* Back link */}
