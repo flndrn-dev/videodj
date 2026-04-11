@@ -319,8 +319,7 @@ export default function Home() {
     }
     restore()
 
-    // No MinIO URL refresh needed — files play from local disk
-    return () => clearInterval(refreshInterval)
+    // No cleanup needed — no MinIO refresh interval
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
