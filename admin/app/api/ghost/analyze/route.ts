@@ -91,9 +91,9 @@ FIX TYPE: ...`
       const analysis = await askQwen(prompt)
 
       // Parse the LLM response
-      const rootCause = analysis.match(/ROOT CAUSE:\s*(.+?)(?=\nIMPACT:|$)/s)?.[1]?.trim() || 'Unknown'
-      const impact = analysis.match(/IMPACT:\s*(.+?)(?=\nPROPOSED FIX:|$)/s)?.[1]?.trim() || 'Unknown'
-      const proposedFix = analysis.match(/PROPOSED FIX:\s*(.+?)(?=\nFIX TYPE:|$)/s)?.[1]?.trim() || 'Manual investigation needed'
+      const rootCause = analysis.match(/ROOT CAUSE:\s*([\s\S]+?)(?=\nIMPACT:|$)/)?.[1]?.trim() || 'Unknown'
+      const impact = analysis.match(/IMPACT:\s*([\s\S]+?)(?=\nPROPOSED FIX:|$)/)?.[1]?.trim() || 'Unknown'
+      const proposedFix = analysis.match(/PROPOSED FIX:\s*([\s\S]+?)(?=\nFIX TYPE:|$)/)?.[1]?.trim() || 'Manual investigation needed'
       const fixType = analysis.match(/FIX TYPE:\s*(\w+)/)?.[1]?.trim() || 'config_change'
 
       const humanReadable = `**Why it happens:** ${rootCause}\n\n**User impact:** ${impact}\n\n**Suggested fix:** ${proposedFix}`
