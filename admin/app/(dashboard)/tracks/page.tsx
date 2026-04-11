@@ -459,10 +459,11 @@ export default function TracksPage() {
         {/* Table */}
         <div style={{ background: '#0d0d1a', border: '1px solid #2a2a4e', borderRadius: 12, overflow: 'hidden' }}>
           <div style={{
-            display: 'grid', gridTemplateColumns: '28px 1fr 120px 80px 55px 55px 50px 70px 220px',
+            display: 'grid', gridTemplateColumns: '45px 28px 1fr 120px 80px 55px 55px 50px 70px 220px',
             padding: '8px 16px', borderBottom: '1px solid #2a2a4e', fontSize: 9,
             color: '#555', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1,
           }}>
+            <span>#</span>
             <input type="checkbox" checked={selected.size > 0 && selected.size === tracks.filter(t => t.minio_key).length} onChange={toggleSelectAll}
               style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#ffff00' }} />
             <span>Title / Artist</span>
@@ -483,12 +484,15 @@ export default function TracksPage() {
             <div key={track.id}>
               <div
                 style={{
-                  display: 'grid', gridTemplateColumns: '28px 1fr 120px 80px 55px 55px 50px 70px 220px',
+                  display: 'grid', gridTemplateColumns: '45px 28px 1fr 120px 80px 55px 55px 50px 70px 220px',
                   padding: '8px 16px', borderBottom: '1px solid #1a1a2e',
                   alignItems: 'center', fontSize: 11,
                   opacity: track.bad_file ? 0.7 : 1,
                 }}
               >
+                <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#333348' }}>
+                  {String((page - 1) * perPage + tracks.indexOf(track) + 1).padStart(5, '0')}
+                </span>
                 <input type="checkbox" checked={selected.has(track.id)} onChange={() => toggleSelect(track.id)}
                   disabled={!track.minio_key}
                   style={{ width: 14, height: 14, cursor: track.minio_key ? 'pointer' : 'default', accentColor: '#ffff00', opacity: track.minio_key ? 1 : 0.2 }} />
