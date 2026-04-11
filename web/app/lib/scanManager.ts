@@ -9,7 +9,7 @@
 
 import type { Track } from '@/app/hooks/usePlayerStore'
 import { setFileRef } from '@/app/lib/db'
-import { extractVideoMetadata } from '@/app/lib/extractMetadata'
+import { extractFastMetadata } from '@/app/lib/extractMetadata'
 import { toast } from 'sonner'
 import * as syncEngine from '@/app/lib/syncEngine'
 
@@ -72,7 +72,7 @@ export function setOnComplete(fn: (tracks: Track[]) => void) {
 export async function processFiles(files: File[]) {
   state = {
     scanning: true,
-    phase: 'processing',
+    phase: 'finding',
     total: files.length,
     current: 0,
     count: 0,
@@ -81,20 +81,16 @@ export async function processFiles(files: File[]) {
   }
   notify()
 
-  // Filter video files first
   const allVideoFiles = files.filter(f => VIDEO_EXTENSIONS.test(f.name))
 
-  // ── STEP 1: Check database BEFORE processing ──────────────────
-  // This avoids expensive metadata extraction for files already in the library
+  // ── STEP 1: Check database for existing files (fast DB query) ──
   state.phase = 'finding'
-  state.currentFile = 'Checking library for existing files...'
+  state.currentFile = 'Checking library...'
   state.total = allVideoFiles.length
   notify()
 
   const existing = (await syncEngine.reconcile()) as Track[]
-  const existingFileNames = new Set(existing.map(t => t.file?.toLowerCase()).filter(Boolean))
 
-  // Split into new files (need processing) and duplicates (just refresh file refs)
   const newFiles: File[] = []
   const duplicateFiles: { file: File; existingTrack: Track }[] = []
 
@@ -107,10 +103,7 @@ export async function processFiles(files: File[]) {
     }
   }
 
-  state.currentFile = `${newFiles.length} new, ${duplicateFiles.length} already in library`
-  notify()
-
-  // Refresh File refs for duplicates so playback works in this session
+  // Refresh file refs for duplicates so playback works in this session
   for (const { existingTrack, file } of duplicateFiles) {
     setFileRef(existingTrack.id, file)
     if (!existingTrack.minioKey && syncEngine.getUserId()) {
@@ -118,116 +111,75 @@ export async function processFiles(files: File[]) {
     }
   }
 
-  // ── STEP 2: Process only NEW files ─────────────────────────────
+  // ── STEP 2: Fast metadata extraction — tags only, no audio decode ──
   state.phase = 'processing'
   state.total = newFiles.length
   state.current = 0
-  state.count = 0
-  state.currentFile = newFiles.length > 0 ? 'Processing new files...' : 'No new files to process'
+  state.currentFile = newFiles.length > 0 ? 'Reading file tags...' : 'No new files'
   notify()
 
-  const items: { track: Track; blob: Blob }[] = []
+  const items: { track: Track; blob: File }[] = []
 
-  if (newFiles.length > 0) {
-    // Process metadata in parallel batches of 4 for speed
-    const SCAN_CONCURRENCY = 4
+  // Process 8 at a time — tag reading is lightweight
+  const SCAN_BATCH = 8
 
-    for (let i = 0; i < newFiles.length; i += SCAN_CONCURRENCY) {
-      const batch = newFiles.slice(i, i + SCAN_CONCURRENCY)
-      const results = await Promise.allSettled(batch.map(async (file) => {
-        const name = file.name.replace(VIDEO_EXTENSIONS, '')
-        const videoUrl = URL.createObjectURL(file)
-        const meta = await extractVideoMetadata(file)
-        const id = crypto.randomUUID()
-        return {
-          track: {
-            id, title: name, artist: meta.artist, album: meta.album,
-            remixer: '', genre: meta.genre, language: meta.language, bpm: meta.bpm,
-            key: meta.key, released: '', duration: meta.duration, timesPlayed: 0,
-            thumbnail: meta.thumbnail, file: file.name, videoUrl,
-            effectiveStartTime: meta.effectiveStartTime,
-            effectiveEndTime: meta.effectiveEndTime,
-            loudness: meta.loudness,
-          } as Track,
-          blob: file,
-        }
-      }))
-
-      for (const result of results) {
-        if (result.status === 'fulfilled') items.push(result.value)
+  for (let i = 0; i < newFiles.length; i += SCAN_BATCH) {
+    const batch = newFiles.slice(i, i + SCAN_BATCH)
+    const results = await Promise.allSettled(batch.map(async (file) => {
+      const name = file.name.replace(VIDEO_EXTENSIONS, '')
+      const meta = await extractFastMetadata(file)
+      const id = crypto.randomUUID()
+      return {
+        track: {
+          id, title: name, artist: meta.artist, album: meta.album,
+          remixer: '', genre: meta.genre, language: meta.language, bpm: meta.bpm,
+          key: meta.key, released: '', duration: meta.duration, timesPlayed: 0,
+          thumbnail: meta.thumbnail, file: file.name,
+          videoUrl: URL.createObjectURL(file),
+        } as Track,
+        blob: file,
       }
+    }))
 
-      state.current = Math.min(i + SCAN_CONCURRENCY, newFiles.length)
-      state.count = items.length
-      state.currentFile = batch[batch.length - 1].name.replace(VIDEO_EXTENSIONS, '').slice(0, 37)
-      notify()
+    for (const result of results) {
+      if (result.status === 'fulfilled') items.push(result.value)
     }
+
+    state.current = Math.min(i + SCAN_BATCH, newFiles.length)
+    state.count = items.length
+    state.currentFile = batch[batch.length - 1].name.replace(VIDEO_EXTENSIONS, '').slice(0, 37)
+    notify()
   }
 
-  // ── STEP 3: Save new tracks ────────────────────────────────────
+  // ── STEP 3: Save metadata to PostgreSQL ──
   state.phase = 'saving'
-  state.currentFile = 'Saving new tracks...'
+  state.currentFile = `Saving ${items.length} tracks...`
   notify()
 
-  // No need for the old duplicate detection — we already filtered above
-  // But keep advanced detection (artist+title matching) for edge cases
-  const normalize = (s: string) => (s || '')
-    .toLowerCase()
-    .replace(/\(.*?\)|\[.*?\]/g, '')
-    .replace(/\bfeat\.?|\bft\.?|\bvs\.?|\bversus\b/gi, '')
-    .replace(/[^\w\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
+  const newTracks = items.map(i => i.track)
 
-  const existingArtistTitle = new Set(
-    existing.filter(t => t.artist && t.title)
-      .map(t => `${normalize(t.artist)}::${normalize(t.title)}`)
-  )
-
-  // Filter out any items that match by artist+title (catches re-encodes with different filenames)
-  const newItems = items.filter(item => {
-    if (item.track.artist && item.track.title) {
-      const key = `${normalize(item.track.artist)}::${normalize(item.track.title)}`
-      if (existingArtistTitle.has(key)) return false
-    }
-    return true
-  })
-
-  const newTracks = newItems.map(i => i.track)
-
-  if (newItems.length > 0) {
-    state.currentFile = `Saving ${newItems.length} tracks to database...`
-    notify()
-
-    // Store File refs in memory so playback works immediately for new tracks
-    for (const item of newItems) {
-      if (item.blob instanceof File) {
-        setFileRef(item.track.id, item.blob as File)
-      }
+  if (items.length > 0) {
+    // Store file refs for immediate playback
+    for (const item of items) {
+      setFileRef(item.track.id, item.blob)
     }
 
-    // Sync metadata to PostgreSQL (source of truth)
+    // Sync to PostgreSQL
     if (syncEngine.getUserId()) {
       await syncEngine.syncMetadata(newTracks)
 
-      // Queue MinIO uploads for new tracks
-      for (const item of newItems) {
-        if (item.blob instanceof File) {
-          syncEngine.enqueueUpload(item.track.id, item.blob as File)
-        }
+      // ── STEP 4: Queue MinIO uploads (background, 1 at a time) ──
+      for (const item of items) {
+        syncEngine.enqueueUpload(item.track.id, item.blob)
       }
     }
   }
 
-  // Build merged library: existing PostgreSQL tracks + newly added tracks (with local videoUrls)
+  // Build merged library
   const merged: Track[] = [
     ...existing.map(t => {
-      // Re-attach local videoUrl if we just refreshed the file ref for this track
       const refreshed = duplicateFiles.find(d => d.existingTrack.id === t.id)
-      if (refreshed) {
-        return { ...t, videoUrl: URL.createObjectURL(refreshed.file) }
-      }
-      return t
+      return refreshed ? { ...t, videoUrl: URL.createObjectURL(refreshed.file) } : t
     }),
     ...newTracks,
   ]
@@ -237,25 +189,17 @@ export async function processFiles(files: File[]) {
     phase: 'done',
     total: allVideoFiles.length,
     current: allVideoFiles.length,
-    count: newItems.length,
+    count: items.length,
     currentFile: '',
     startTime: state.startTime,
   }
   notify()
 
-  // Notify via callback (updates library in page.tsx)
-  if (onCompleteCallback) {
-    onCompleteCallback(merged)
-  }
+  if (onCompleteCallback) onCompleteCallback(merged)
 
-  // Toast notification — visible even if modal is closed
   const skippedCount = duplicateFiles.length
-  if (newItems.length > 0) {
-    if (skippedCount > 0) {
-      toast.success(`${newItems.length} new + ${skippedCount} already in library`)
-    } else {
-      toast.success(`${newItems.length} videos added`)
-    }
+  if (items.length > 0) {
+    toast.success(skippedCount > 0 ? `${items.length} new + ${skippedCount} already in library` : `${items.length} videos added`)
   } else if (skippedCount > 0) {
     toast.success(`${skippedCount} videos refreshed — all already in library`)
   } else if (allVideoFiles.length > 0) {

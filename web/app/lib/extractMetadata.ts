@@ -420,48 +420,61 @@ async function detectEffectiveEnd(file: File): Promise<number | null> {
 }
 
 // ---------------------------------------------------------------------------
-// Main export: extract everything
+// Fast extraction — tags + video element only. No audio decode.
 // ---------------------------------------------------------------------------
 
-export async function extractVideoMetadata(file: File): Promise<VideoMeta> {
-  // Run tag extraction, video element extraction, and loudness in parallel
-  const [tags, videoInfo, loudness, effectiveEnd, effectiveStart] = await Promise.all([
+/** Fast extraction — reads ID3/Vorbis tags + video element for duration/thumbnail.
+ *  No audio decode. Returns in < 1 second per file. */
+export async function extractFastMetadata(file: File): Promise<VideoMeta> {
+  const [tags, videoInfo] = await Promise.all([
     extractTags(file),
     extractFromVideoElement(file),
+  ])
+
+  return {
+    duration: tags.duration || videoInfo.duration,
+    thumbnail: videoInfo.thumbnail,
+    bpm: tags.bpm || 0,
+    key: tags.key || '',
+    artist: tags.artist || '',
+    album: tags.album || '',
+    genre: tags.genre || '',
+    language: tags.language?.toUpperCase() || null,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Heavy extraction — full audio analysis. Call on-demand, NOT during scan.
+// ---------------------------------------------------------------------------
+
+/** Heavy extraction — full audio decode for BPM, key, loudness, effective start/end.
+ *  Call on-demand (e.g. /fix bpm, /fix keys), NOT during folder scan. */
+export async function extractHeavyMetadata(file: File): Promise<{
+  bpm: number; key: string; loudness: number;
+  effectiveStartTime?: number; effectiveEndTime?: number;
+}> {
+  const [bpm, key, loudness, effectiveEnd, effectiveStart] = await Promise.all([
+    detectBPM(file),
+    detectKey(file),
     measureLoudness(file),
     detectEffectiveEnd(file),
     detectEffectiveStart(file),
   ])
 
-  let bpm = tags.bpm || 0
-  let key = tags.key || ''
-
-  // If no BPM from tags, try audio analysis
-  // If no key from tags, try key detection
-  // Run both in parallel if needed
-  const needsBpm = bpm === 0
-  const needsKey = key === ''
-
-  if (needsBpm || needsKey) {
-    const [detectedBpm, detectedKey] = await Promise.all([
-      needsBpm ? detectBPM(file) : Promise.resolve(bpm),
-      needsKey ? detectKey(file) : Promise.resolve(key),
-    ])
-    if (needsBpm) bpm = detectedBpm
-    if (needsKey) key = detectedKey
-  }
-
   return {
-    duration: tags.duration || videoInfo.duration,
-    thumbnail: videoInfo.thumbnail,
     bpm,
     key,
-    artist: tags.artist || '',
-    album: tags.album || '',
-    genre: tags.genre || '',
-    language: tags.language?.toUpperCase() || null,
-    loudness: loudness || undefined,
-    effectiveEndTime: effectiveEnd || undefined,
+    loudness,
     effectiveStartTime: effectiveStart || undefined,
+    effectiveEndTime: effectiveEnd || undefined,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Legacy compat — now just calls fast extraction
+// ---------------------------------------------------------------------------
+
+/** @deprecated Use extractFastMetadata instead */
+export async function extractVideoMetadata(file: File): Promise<VideoMeta> {
+  return extractFastMetadata(file)
 }

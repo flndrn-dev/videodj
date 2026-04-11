@@ -77,7 +77,7 @@ export function onStatusChange(fn: StatusListener): () => void {
 // ---------------------------------------------------------------------------
 
 function maxConcurrency(): number {
-  return mode === 'live' ? 2 : 5
+  return mode === 'live' ? 1 : 1  // 1 at a time — prevents memory pressure
 }
 
 function hasPrioritySlot(): boolean {
