@@ -79,6 +79,7 @@ export default function TracksPage() {
       const data = await res.json()
       if (!data.streamUrl) {
         setTestStatus(prev => ({ ...prev, [trackId]: 'broken' }))
+        // Only flag as bad if file truly doesn't exist in storage
         await flagTrackBad(trackId, true, 'File missing from storage')
         return
       }
@@ -88,7 +89,7 @@ export default function TracksPage() {
       video.preload = 'metadata'
 
       const result = await new Promise<'ok' | 'broken'>((resolve) => {
-        const timeout = setTimeout(() => resolve('broken'), 8000)
+        const timeout = setTimeout(() => resolve('broken'), 15000) // 15s timeout, not 8s
         video.onloadedmetadata = () => { clearTimeout(timeout); resolve('ok') }
         video.onerror = () => { clearTimeout(timeout); resolve('broken') }
         video.src = data.streamUrl
@@ -97,14 +98,14 @@ export default function TracksPage() {
       video.src = ''
       setTestStatus(prev => ({ ...prev, [trackId]: result }))
 
-      if (result === 'broken') {
-        await flagTrackBad(trackId, true, 'Video failed to load')
-      } else if (tracks.find(t => t.id === trackId)?.bad_file) {
+      // DO NOT auto-flag as bad on timeout — only clear bad flag if test passes
+      if (result === 'ok' && tracks.find(t => t.id === trackId)?.bad_file) {
         await flagTrackBad(trackId, false)
       }
+      // Timeout/broken is just a UI indicator, not a permanent DB flag
     } catch {
       setTestStatus(prev => ({ ...prev, [trackId]: 'broken' }))
-      await flagTrackBad(trackId, true, 'Test error — network or storage')
+      // Don't flag in DB — test failure could be network/timeout, not a broken file
     }
   }
 
@@ -136,7 +137,7 @@ export default function TracksPage() {
         video.crossOrigin = 'anonymous'
         video.preload = 'metadata'
         const result = await new Promise<'ok' | 'broken'>((resolve) => {
-          const timeout = setTimeout(() => resolve('broken'), 8000)
+          const timeout = setTimeout(() => resolve('broken'), 15000)
           video.onloadedmetadata = () => { clearTimeout(timeout); resolve('ok') }
           video.onerror = () => { clearTimeout(timeout); resolve('broken') }
           video.src = data.streamUrl
@@ -148,11 +149,11 @@ export default function TracksPage() {
           if (track.bad_file) await flagTrackBad(track.id, false)
         } else {
           broken++
-          await flagTrackBad(track.id, true, 'Video failed to load')
+          // Don't auto-flag in DB — timeout doesn't mean broken
         }
       } catch {
         setTestStatus(prev => ({ ...prev, [track.id]: 'broken' })); broken++
-        await flagTrackBad(track.id, true, 'Test error — network or storage')
+        // Don't flag in DB — network errors are not file issues
       }
       done++
       setBulkTestProgress({ done, total: toTest.length, ok, broken })

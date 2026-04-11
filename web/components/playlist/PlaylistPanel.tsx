@@ -579,7 +579,7 @@ export function PlaylistPanel({
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: 'spring', stiffness: 260, damping: 28, delay: 0.2 }}
       style={{
-        height: '40%', flexShrink: 0,
+        height: '100%', flexShrink: 0,
         background: '#0d0d16',
         borderTop: '1px solid #2a2a3e',
         display: 'flex', flexDirection: 'column',

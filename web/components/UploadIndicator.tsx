@@ -26,31 +26,36 @@ export default function UploadIndicator() {
 
   return (
     <div style={{
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      zIndex: 30,
       background: '#0d0d18',
-      borderTop: '2px solid #ffff0030',
-      padding: 0,
+      borderTop: '2px solid rgba(255,255,0,0.25)',
+      boxShadow: '0 -4px 20px rgba(0,0,0,0.5)',
     }}>
-      {/* Header bar — always visible when uploading */}
+      {/* Header bar */}
       <button
         onClick={() => setExpanded(!expanded)}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-          padding: '10px 12px', background: 'rgba(255,255,0,0.03)', border: 'none',
+          padding: '8px 12px', background: 'rgba(255,255,0,0.03)', border: 'none',
           cursor: 'pointer', color: '#e0e0f0',
         }}
       >
-        <Cloud size={16} color="#ffff00" />
-        <span style={{ fontSize: 12, fontWeight: 700, flex: 1, textAlign: 'left' }}>
+        <Cloud size={14} color="#ffff00" />
+        <span style={{ fontSize: 11, fontWeight: 700, flex: 1, textAlign: 'left' }}>
           Uploading {totalDone}/{totalAll}
         </span>
         {progress.failed > 0 && (
-          <span style={{ fontSize: 9, color: '#ef4444' }}>{progress.failed} failed</span>
+          <span style={{ fontSize: 9, color: '#ef4444', fontWeight: 600 }}>{progress.failed} failed</span>
         )}
         {expanded ? <ChevronDown size={12} color="#555570" /> : <ChevronUp size={12} color="#555570" />}
       </button>
 
       {/* Progress bar */}
-      <div style={{ height: 2, background: '#1a1a2e', margin: '0 12px' }}>
+      <div style={{ height: 3, background: '#1a1a2e', margin: '0 12px 4px' }}>
         <motion.div
           style={{ height: '100%', background: '#ffff00', borderRadius: 1 }}
           animate={{ width: `${totalAll > 0 ? (totalDone / totalAll) * 100 : 0}%` }}
@@ -58,7 +63,7 @@ export default function UploadIndicator() {
         />
       </div>
 
-      {/* Expanded file list */}
+      {/* Expanded file list — floats over library */}
       <AnimatePresence>
         {expanded && (
           <motion.div
@@ -66,22 +71,21 @@ export default function UploadIndicator() {
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.15 }}
-            style={{ maxHeight: 200, overflowY: 'auto', padding: '4px 0' }}
+            style={{ maxHeight: 160, overflowY: 'auto', padding: '2px 0 6px' }}
           >
-            {/* Currently uploading */}
             {progress.currentFiles.map(name => (
               <div key={name} style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '3px 12px', fontSize: 10, color: '#ffff00',
               }}>
-                <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} />
+                <Loader2 size={10} style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }} />
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {name.replace(/\.(mp4|mkv|avi|mov|webm|m4v)$/i, '')}
                 </span>
               </div>
             ))}
             {progress.queued > 0 && (
-              <div style={{ padding: '3px 12px', fontSize: 9, color: '#333348' }}>
+              <div style={{ padding: '3px 12px', fontSize: 9, color: '#444' }}>
                 {progress.queued} more in queue...
               </div>
             )}

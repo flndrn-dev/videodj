@@ -1925,6 +1925,7 @@ export default function Home() {
       </div>
 
       {/* ── Bottom 40%: Video library / playlist ──────────────────────── */}
+      <div style={{ position: 'relative', height: '40%', flexShrink: 0 }}>
       <PlaylistPanel
         playlist={playlist}
         library={library}
@@ -2017,6 +2018,7 @@ export default function Home() {
         }}
       />
       <UploadIndicator />
+      </div>
 
       {/* Playlist creation modal */}
       {showPlaylistModal && (
