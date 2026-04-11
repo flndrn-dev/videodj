@@ -10,7 +10,6 @@
 
 import type { Track } from '@/app/hooks/usePlayerStore'
 import { uploadToCloud, getStreamUrl } from '@/app/lib/cloudStorage'
-import { updateTrackMeta as updateLocalTrackMeta } from '@/app/lib/db'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,6 +48,13 @@ const listeners: Set<StatusListener> = new Set()
 let totalEnqueued = 0
 let totalFailed = 0
 
+// Upload progress tracking — visible to UI
+let uploadProgress = { active: 0, queued: 0, completed: 0, failed: 0, currentFiles: [] as string[] }
+
+export function getUploadProgress() {
+  return { ...uploadProgress, currentFiles: [...uploadProgress.currentFiles] }
+}
+
 // ---------------------------------------------------------------------------
 // Status
 // ---------------------------------------------------------------------------
@@ -77,7 +83,7 @@ export function onStatusChange(fn: StatusListener): () => void {
 // ---------------------------------------------------------------------------
 
 function maxConcurrency(): number {
-  return mode === 'live' ? 1 : 1  // 1 at a time — prevents memory pressure
+  return mode === 'live' ? 1 : 3
 }
 
 function hasPrioritySlot(): boolean {
@@ -109,16 +115,13 @@ function processQueue() {
 
 async function runUpload(job: UploadJob) {
   activeUploads++
+  uploadProgress.active = activeUploads
+  uploadProgress.queued = uploadQueue.length
+  uploadProgress.currentFiles.push(job.file.name)
   notify()
-
-  // Mark track as uploading in local DB
-  await updateLocalTrackMeta(job.trackId, { uploadStatus: 'uploading' } as Partial<Track>)
 
   try {
     const { key } = await uploadToCloud(job.file, job.userId, job.trackId)
-
-    // Update local metadata with minio_key
-    await updateLocalTrackMeta(job.trackId, { minioKey: key, uploadStatus: 'uploaded' } as Partial<Track>)
 
     // Sync minio_key to PostgreSQL
     await fetch('/api/tracks', {
@@ -126,6 +129,9 @@ async function runUpload(job: UploadJob) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: job.trackId, minio_key: key }),
     })
+
+    uploadProgress.completed++
+    uploadProgress.currentFiles = uploadProgress.currentFiles.filter(f => f !== job.file.name)
   } catch (err) {
     console.error(`[syncEngine] Upload failed for ${job.trackId}:`, err)
     job.retries++
@@ -138,10 +144,13 @@ async function runUpload(job: UploadJob) {
       }, delay)
     } else {
       totalFailed++
-      await updateLocalTrackMeta(job.trackId, { uploadStatus: 'failed' } as Partial<Track>)
+      uploadProgress.failed++
+      uploadProgress.currentFiles = uploadProgress.currentFiles.filter(f => f !== job.file.name)
     }
   } finally {
     activeUploads--
+    uploadProgress.active = activeUploads
+    uploadProgress.queued = uploadQueue.length
     notify()
     processQueue()
   }

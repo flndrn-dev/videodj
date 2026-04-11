@@ -2016,6 +2016,7 @@ export default function Home() {
           toast.success(`Exported ${tracks.length} tracks (JSON + CSV)`)
         }}
       />
+      <UploadIndicator />
 
       {/* Playlist creation modal */}
       {showPlaylistModal && (
@@ -2032,8 +2033,7 @@ export default function Home() {
         />
       )}
 
-      {/* Upload progress indicator (bottom-left) */}
-      <UploadIndicator />
+      {/* Upload indicator moved into playlist panel area above */}
 
       {/* Help widget moved to Header */}
 
