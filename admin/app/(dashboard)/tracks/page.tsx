@@ -491,7 +491,7 @@ export default function TracksPage() {
                 }}
               >
                 <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#333348' }}>
-                  {String((page - 1) * perPage + tracks.indexOf(track) + 1).padStart(5, '0')}
+                  {String((page - 1) * 50 + tracks.indexOf(track) + 1).padStart(5, '0')}
                 </span>
                 <input type="checkbox" checked={selected.has(track.id)} onChange={() => toggleSelect(track.id)}
                   disabled={!track.minio_key}
