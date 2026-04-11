@@ -239,6 +239,48 @@ Tech: Next.js 16, React 19, Tailwind v4, Shadcn, Framer Motion, lucide-animated,
 
 ---
 
+## TIER 8: App Health Monitor + Self-Healing Agent (Client-Side)
+
+### Phase A — Fix Upload Crash + Client Error Reporting (URGENT)
+
+The app crashes (error page) after uploading large music libraries (~1,444 files). Root cause: browser runs out of heap memory during concurrent metadata extraction (BPM, key, loudness, waveform — each decodes full audio buffer). Needs immediate fix + error visibility.
+
+- [ ] **8.1 Fix upload memory crash** — Process metadata in smaller batches with explicit memory cleanup (close AudioContext, release decoded buffers between batches). Skip heavy analysis for files that already have tags. Add try-catch around scan loop so one failure doesn't kill the whole scan.
+- [ ] **8.2 Client-side error reporting** — Catch unhandled errors + promise rejections in the app, ship to admin dashboard via `/api/errors` endpoint. Store in PostgreSQL `app_errors` table with: error message, stack trace, component, user_id, browser info, timestamp.
+- [ ] **8.3 Admin error dashboard** — New tab on the admin System page showing real-time client errors from all users. Filterable by severity, component, user. Click to expand full stack trace.
+- [ ] **8.4 Ghost client integration** — Wire client error reports to Ghost server so it learns from app crashes (not just server-side issues).
+
+### Phase B — Self-Proposing Fix Agent (After Support section)
+
+Extend Ghost's self-healing concept to client-side app issues. Ghost analyzes error patterns, proposes fixes in plain human-readable language, and waits for admin approval before applying.
+
+- [ ] **8.5 Error pattern analysis** — Ghost groups similar errors, identifies root cause patterns (memory, CORS, codec, network), and calculates frequency/impact.
+- [ ] **8.6 Fix proposals in human language** — Ghost writes a plain-English explanation of what's failing and a proposed fix. Example: "The app crashed 3 times today because BPM detection runs out of memory on files larger than 200MB. Proposed fix: skip BPM analysis for files over 150MB and use tag-based BPM only."
+- [ ] **8.7 Admin approval flow** — Proposals appear as notifications in admin dashboard. Admin reviews, approves, or rejects. Approved fixes get applied as Ghost rules that modify app behavior.
+- [ ] **8.8 Auto-fix rules** — Promoted fixes become automatic: Ghost detects the pattern → applies the fix without waiting for approval (same promotion engine as server-side Ghost).
+
+---
+
+## TIER 9: Admin Support System + Web Contact Form
+
+Full support ticket system with email integration and live chat.
+
+### Phase A — Admin Support Dashboard
+
+- [ ] **9.1 Real-time ticket view** — Support page shows PostgreSQL tickets with live updates (SSE or polling). Status workflow: open → in_progress → resolved → closed.
+- [ ] **9.2 Email inbound** — Resend webhook receives emails to support@videodj.studio, creates tickets automatically with sender info + message body.
+- [ ] **9.3 Email reply** — Admin replies to tickets → sends email back to customer via Resend. Full thread view in admin.
+- [ ] **9.4 Internal notes** — Support agents can add internal notes (not visible to customer) on tickets.
+- [ ] **9.5 Assignment + SLA** — Assign tickets to support agents. SLA tracking (response time, resolution time).
+
+### Phase B — Web Contact Form
+
+- [ ] **9.6 Contact page form** — videodj.studio/contact sends form data to `/api/contact` which creates a support ticket + sends confirmation email to user.
+- [ ] **9.7 App-side support widget** — "Help" button in the DJ app that opens a ticket directly from within the app, pre-filled with user info and system context (browser, tracks loaded, active features).
+- [ ] **9.8 Knowledge base** — FAQ section on the website that reduces support load. Searchable, categorized.
+
+---
+
 ## TODO (tasks that pop up during build)
 
 _Items discovered during implementation that need attention:_

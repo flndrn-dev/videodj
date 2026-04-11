@@ -70,7 +70,9 @@ API routes that need config (agent, stream, lookup, twitch, settings) use `web/a
 - **Headphone Detection**: Auto-detects audio output devices (wired, Bluetooth, USB). Requests mic permission to unlock device labels. Headphone icon in header turns green when detected/selected. Device picker dropdown for routing audio output.
 - **Live Streaming**: Canvas compositor (crossfade blend of both decks), Now Playing overlay, RTMP output via server-side FFmpeg to Twitch/YouTube. Stream Dashboard with platform selection (Twitch/YouTube), stream key, resolution (720p/1080p), bitrate control. Twitch IRC chat + YouTube Live Chat polling in unified chat panel.
 - **Deck Controls**: Play/Pause (toggle) | CUE (text button, returns to start) | Eject (removes track from deck)
-- **Broken File Management**: `/health` command detects corrupt/missing/audio-only files. Bad files flagged with `badFile` + `badReason`. Auto-skipped in autoplay. Admin dashboard at admin.videodj.studio/tracks for verify/authorize/delete.
+- **Broken File Management**: `/health` command detects corrupt/missing/audio-only files. Bad files flagged with `badFile` + `badReason`. Auto-skipped in autoplay. Ghost auto-detects stalled videos and flags them. Admin dashboard at admin.videodj.studio/tracks for bulk test/verify/accept/delete.
+- **Effective Start/End Detection**: Audio analysis finds where music actually starts (skips silence/intro) and ends (before credits/silence). Tracks auto-seek to effective start on load. CUE returns to effective start. Autoplay transitions trigger before effective end.
+- **Client Health Monitor** (planned): Client-side error reporting → admin dashboard. Ghost learns from app crashes and proposes fixes in human-readable language for admin approval. Approved fixes become auto-applied rules.
 
 ## Tech Stack
 
