@@ -72,7 +72,8 @@ API routes that need config (agent, stream, lookup, twitch, settings) use `web/a
 - **Deck Controls**: Play/Pause (toggle) | CUE (text button, returns to start) | Eject (removes track from deck)
 - **Broken File Management**: `/health` command detects corrupt/missing/audio-only files. Bad files flagged with `badFile` + `badReason`. Auto-skipped in autoplay. Ghost auto-detects stalled videos and flags them. Admin dashboard at admin.videodj.studio/tracks for bulk test/verify/accept/delete.
 - **Effective Start/End Detection**: Audio analysis finds where music actually starts (skips silence/intro) and ends (before credits/silence). Tracks auto-seek to effective start on load. CUE returns to effective start. Autoplay transitions trigger before effective end.
-- **Client Health Monitor** (planned): Client-side error reporting → admin dashboard. Ghost learns from app crashes and proposes fixes in human-readable language for admin approval. Approved fixes become auto-applied rules.
+- **Client Health Monitor**: Client-side error reporting → admin dashboard. Ghost learns from app crashes and proposes fixes in human-readable language for admin approval via Qwen 14B LLM. Approved fixes become auto-applied rules.
+- **User Track Manager** (planned): Mini version of Admin Tracks in the DJ app. Users manage their own library: verify playability, upload missing files, edit metadata, handle bad files. Accessible via `/library` route. Includes playlist management with sharing and import/export.
 
 ## Tech Stack
 

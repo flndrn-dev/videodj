@@ -292,6 +292,26 @@ Full support ticket system with email integration and live chat.
 
 ---
 
+## TIER 10: User Dashboard — Track & Playlist Management
+
+Mini version of Admin → Tracks for regular users in the DJ app. Users can manage their own library without admin access.
+
+### Phase A — User Track Manager (in App)
+- [ ] **10.1 User tracks page** — `/library` route in the app. Table view of user's tracks: #, title, artist, genre, BPM, key, duration, status (uploaded/pending/bad), actions.
+- [ ] **10.2 Track verification** — Test Playable button per track (same as admin but for own tracks only). Locked once verified as playable.
+- [ ] **10.3 Upload missing files** — "Upload Files" button to re-upload failed/missing files from local folder. Matches by filename, uploads to MinIO, updates minio_key.
+- [ ] **10.4 Track metadata editing** — Inline edit: title, artist, album, genre, BPM, key. Saves to PostgreSQL.
+- [ ] **10.5 Bad file management** — View/accept/remove bad files. User can clear bad flag or delete broken tracks.
+- [ ] **10.6 Search + filter** — Search by title/artist/genre. Filter by status (all/uploaded/pending/bad).
+
+### Phase B — User Playlist Manager (in App)
+- [ ] **10.7 Playlist management page** — `/playlists` route. List all user playlists with track count, duration, share status.
+- [ ] **10.8 Playlist editing** — Add/remove tracks, reorder, rename, delete playlists.
+- [ ] **10.9 Playlist sharing** — Generate/remove share codes. Preview shared playlist link.
+- [ ] **10.10 Import/export playlists** — Export as JSON/M3U. Import from other DJ software (Rekordbox XML, Serato crates).
+
+---
+
 ## TODO (tasks that pop up during build)
 
 _Items discovered during implementation that need attention:_

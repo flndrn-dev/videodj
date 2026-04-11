@@ -605,11 +605,11 @@ export default function TracksPage() {
                 <div style={{ display: 'flex', gap: 3, justifyContent: 'flex-end', flexWrap: 'wrap', alignItems: 'center' }}>
                   {track.minio_key && (
                     <>
-                      {/* Play test button */}
+                      {/* Play test button — locked once verified as Playable */}
                       <button
-                        onClick={() => testTrack(track.id, track.minio_key!)}
-                        disabled={testStatus[track.id] === 'testing'}
-                        title="Test if file is playable"
+                        onClick={() => testStatus[track.id] !== 'ok' && testTrack(track.id, track.minio_key!)}
+                        disabled={testStatus[track.id] === 'testing' || testStatus[track.id] === 'ok'}
+                        title={testStatus[track.id] === 'ok' ? 'Verified as playable ✓' : 'Test if file is playable'}
                         style={{
                           padding: '3px 8px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 3,
                           border: testStatus[track.id] === 'ok' ? '1px solid rgba(74,222,128,0.4)' :
@@ -621,13 +621,14 @@ export default function TracksPage() {
                           color: testStatus[track.id] === 'ok' ? '#4ade80' :
                                  testStatus[track.id] === 'broken' ? '#ef4444' :
                                  testStatus[track.id] === 'testing' ? '#a855f7' : '#a855f7',
-                          cursor: testStatus[track.id] === 'testing' ? 'wait' : 'pointer', fontSize: 9,
+                          cursor: testStatus[track.id] === 'ok' ? 'default' : testStatus[track.id] === 'testing' ? 'wait' : 'pointer',
+                          fontSize: 9,
                           opacity: testStatus[track.id] === 'testing' ? 0.6 : 1,
                         }}
                       >
-                        <Play size={9} />
+                        {testStatus[track.id] === 'ok' ? <CheckCircle size={9} /> : <Play size={9} />}
                         {testStatus[track.id] === 'testing' ? 'Testing...' :
-                         testStatus[track.id] === 'ok' ? 'Playable' :
+                         testStatus[track.id] === 'ok' ? 'Playable ✓' :
                          testStatus[track.id] === 'broken' ? 'Broken' : 'Test'}
                       </button>
                       <button onClick={() => handleDownload(track)} title="Download file"
