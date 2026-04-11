@@ -82,8 +82,14 @@ export async function POST(req: NextRequest) {
       const categoryLine = category ? `<p><strong style="color:#9898b8;">Category:</strong> ${category}</p>` : ''
       const metaLine = meta ? `<p style="font-size:11px;color:#5a5a78;margin-top:16px;">IP: ${meta.ip} | Country: ${meta.country} | TZ: ${meta.timezone} | OS: ${meta.os}</p>` : ''
 
+      // Support tickets use support@ (allows customer replies), others use noreply@
+      const isSupport = !!category
+      const fromAddress = isSupport
+        ? 'videoDJ.Studio Support <support@videodj.studio>'
+        : 'videoDJ.Studio <noreply@videodj.studio>'
+
       await resend.emails.send({
-        from: 'videoDJ.Studio Contact <noreply@videodj.studio>',
+        from: fromAddress,
         to: 'support@videodj.studio',
         replyTo: email,
         subject: `${ticketNumber ? `[${ticketNumber}] ` : ''}${subject} — from ${customerName}`,
@@ -107,7 +113,9 @@ export async function POST(req: NextRequest) {
         : ''
 
       await resend.emails.send({
-        from: 'videoDJ.Studio <noreply@videodj.studio>',
+        from: isSupport
+          ? 'videoDJ.Studio Support <support@videodj.studio>'
+          : 'videoDJ.Studio <noreply@videodj.studio>',
         to: email,
         subject: ticketNumber
           ? `[${ticketNumber}] We received your support request — videoDJ.Studio`
@@ -117,7 +125,7 @@ export async function POST(req: NextRequest) {
             <h2 style="color:#ffff00;margin-bottom:16px;">Thanks for reaching out!</h2>
             ${userTicketLine}
             <p style="color:#9898b8;line-height:1.6;">Hi ${firstName}, we received your message about "${subject}". We typically respond within 24 hours.</p>
-            ${ticketNumber ? `<p style="color:#9898b8;line-height:1.6;font-size:13px;">Your ticket reference is <strong style="color:#f0f0f8;">${ticketNumber}</strong>. You can use this in future correspondence.</p>` : ''}
+            ${ticketNumber ? `<p style="color:#9898b8;line-height:1.6;font-size:13px;">Your ticket reference is <strong style="color:#f0f0f8;">${ticketNumber}</strong>. You can reply directly to this email to add to your ticket.</p>` : ''}
             <p style="color:#5a5a78;font-size:12px;margin-top:24px;">— videoDJ.Studio Support</p>
           </div>
         `,

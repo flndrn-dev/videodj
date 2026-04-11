@@ -114,6 +114,16 @@ export async function POST(
       const ticket = ticketResult.rows[0]
       if (ticket?.customer_email) {
         try {
+          // Get ticket number from first message attachments
+          const firstMsgResult = await pool.query(
+            'SELECT attachments FROM ticket_messages WHERE ticket_id = $1 ORDER BY created_at ASC LIMIT 1', [id]
+          )
+          const firstAttach = firstMsgResult.rows[0]?.attachments as Record<string, unknown> | null
+          const ticketNumber = firstAttach?.ticketNumber ? String(firstAttach.ticketNumber) : null
+          const subjectWithTicket = ticketNumber
+            ? `Re: [${ticketNumber}] ${String(ticket.subject)}`
+            : `Re: ${String(ticket.subject)}`
+
           const { Resend } = await import('resend')
           const resendKey = process.env.RESEND_API_KEY
           if (resendKey) {
@@ -121,12 +131,13 @@ export async function POST(
             await resend.emails.send({
               from: 'videoDJ.Studio Support <support@videodj.studio>',
               to: String(ticket.customer_email),
-              subject: `Re: ${String(ticket.subject)}`,
+              subject: subjectWithTicket,
               html: `<div style="background:#0a0a14;color:#f0f0f8;padding:32px;font-family:system-ui,sans-serif;border-radius:16px;">
                 <p style="color:#9898b8;font-size:12px;margin-bottom:8px;">videoDJ.Studio Support replied:</p>
                 <p style="white-space:pre-wrap;line-height:1.6;">${text}</p>
                 <hr style="border-color:#1e1e38;margin:16px 0;" />
-                <p style="color:#5a5a78;font-size:11px;">Ticket: ${ticket.subject}</p>
+                <p style="color:#5a5a78;font-size:11px;">${ticketNumber ? `Ticket: ${ticketNumber} — ` : ''}${String(ticket.subject)}</p>
+                <p style="color:#5a5a78;font-size:10px;margin-top:8px;">Reply to this email to respond.</p>
               </div>`,
             })
           }
