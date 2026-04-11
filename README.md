@@ -10,11 +10,10 @@ AI-powered Video DJ & Auto-mixing application. Mix music videos with dual decks,
 - **Pro DJ Controls** — Loops (1/2/4/8/16 bars), hotcues (A-H), tempo sync (±8%), gain/trim per deck
 - **Crossfader** — Custom slider with snap-to-center, linear 3-second auto-crossfade transitions
 - **Autoplay** — Smart track selection with silence detection, artist spacing, bad file skipping
-- **AI Agent (Linus)** — Claude-powered DJ assistant with 30+ slash commands for library management, metadata fixing, playlist building, and mixing suggestions
+- **AI Agent (Linus)** — Ollama/Qwen 14B powered DJ assistant with 30+ slash commands for library management, metadata fixing, playlist building, and mixing suggestions
 - **Live Streaming** — WHIP/RTMP to Twitch/YouTube with Now Playing overlay, Twitch IRC + YouTube Live Chat in unified chat panel
-- **Upload Progress** — Floating indicator with per-track cloud status icons (uploaded/uploading/pending/failed)
 - **Mix Recording** — Capture audio + video to WebM file
-- **Library Management** — PostgreSQL persistence, MinIO S3 storage, metadata extraction (BPM, key, genre from tags + audio analysis), MusicBrainz/Discogs lookup
+- **Library Management** — PostgreSQL metadata storage, local file playback, metadata extraction (BPM, key, genre from tags), MusicBrainz/Discogs lookup
 - **Headphone Detection** — Auto-detects wired/Bluetooth/USB headphones, device routing via setSinkId
 - **DJ Software Import** — Rekordbox XML, Serato crates, M3U/M3U8 playlists
 - **Set History** — Full tracklist logging with timestamps and export
@@ -24,10 +23,10 @@ AI-powered Video DJ & Auto-mixing application. Mix music videos with dual decks,
 
 - **Frontend**: Next.js 16, React 19, Zustand, Framer Motion, Tailwind v4
 - **Audio**: Web Audio API, music-metadata-browser, wavesurfer.js
-- **AI**: Claude API (multi-provider: Anthropic, OpenAI, xAI, Ollama, DeepSeek)
+- **AI**: Ollama/Qwen 14B (primary), Claude API (fallback). Multi-provider support.
 - **Streaming**: Canvas compositor + WHIP/RTMP
-- **Desktop**: Electron + Vite (macOS, Linux, Windows)
-- **Database**: PostgreSQL (source of truth) + MinIO S3 (video files) + IndexedDB (browser cache)
+- **Desktop**: Electron 33 + electron-builder (macOS, Linux, Windows)
+- **Database**: PostgreSQL (metadata, source of truth). Files play from local disk.
 - **Deployment**: Dokploy auto-deploy from GitHub, Docker containers
 
 ## Production Services

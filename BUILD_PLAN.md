@@ -1,5 +1,19 @@
 # videoDJ.Studio — Build Plan
 
+## ⚠️ PRODUCTION ARCHITECTURE RULE
+
+**Video files are NEVER uploaded to MinIO for playback. Files play from LOCAL DISK only.**
+
+- PostgreSQL stores METADATA (title, artist, BPM, key, genre, duration)
+- Files play from browser File references (local disk access via File System API)
+- MinIO is reserved for FUTURE cloud backup (DJ subscription tier) — NOT for playback
+- After page refresh, user re-selects their music folder (browser security)
+- Desktop app (Electron) persists folder path — no re-select needed
+
+**Do NOT add MinIO to the scan/playback pipeline. This was tried and failed twice.**
+
+---
+
 ## TIER 1: Automix Engine (Linus becomes a real DJ)
 
 - [x] **1.1 Smart Track Selection**
