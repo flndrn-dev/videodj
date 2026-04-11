@@ -351,22 +351,25 @@ export async function reconcile(): Promise<Partial<Track>[]> {
 const urlTimestamps = new Map<string, number>()
 const URL_REFRESH_THRESHOLD = 20 * 60 * 60 * 1000 // 20 hours (URLs expire at 24h)
 
-/** For tracks with minioKey but no videoUrl, fetch pre-signed stream URLs */
+/** For tracks with minioKey but no videoUrl, fetch pre-signed stream URLs in batches */
 export async function resolveVideoUrls(tracks: Track[]): Promise<{ urls: Map<string, string>; failed: string[] }> {
   const urls = new Map<string, string>()
   const failed: string[] = []
   const needUrls = tracks.filter(t => !t.videoUrl && t.minioKey)
+  const BATCH = 20 // Resolve 20 at a time to avoid flooding
 
-  await Promise.allSettled(needUrls.map(async track => {
-    try {
-      const url = await getStreamUrl(track.minioKey!)
-      urls.set(track.id, url)
-      urlTimestamps.set(track.id, Date.now())
-    } catch (err) {
-      console.error(`[syncEngine] Failed to resolve URL for ${track.title} (key: ${track.minioKey}):`, err)
-      failed.push(track.id)
-    }
-  }))
+  for (let i = 0; i < needUrls.length; i += BATCH) {
+    const batch = needUrls.slice(i, i + BATCH)
+    await Promise.allSettled(batch.map(async track => {
+      try {
+        const url = await getStreamUrl(track.minioKey!)
+        urls.set(track.id, url)
+        urlTimestamps.set(track.id, Date.now())
+      } catch {
+        failed.push(track.id)
+      }
+    }))
+  }
 
   if (failed.length > 0) {
     console.warn(`[syncEngine] ${failed.length}/${needUrls.length} tracks failed URL resolution`)
