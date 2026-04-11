@@ -16,27 +16,45 @@ async function getUserId(req: NextRequest): Promise<string | null> {
   return (result.rows[0] as { user_id: string } | undefined)?.user_id ?? null
 }
 
+// POST — save or update a conversation (upsert by session_id)
 export async function POST(req: NextRequest) {
   const userId = await getUserId(req)
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
-    const { summary, topics, actions, messageCount } = await req.json()
-    if (!summary) return NextResponse.json({ error: 'summary required' }, { status: 400 })
+    const { sessionId, messages, summary, provider, model } = await req.json()
+    if (!sessionId) return NextResponse.json({ error: 'sessionId required' }, { status: 400 })
 
-    const result = await pool.query(
-      `INSERT INTO linus_conversations (user_id, summary, topics, actions, message_count)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [userId, summary, topics || [], actions || [], messageCount || 0]
+    // Upsert — update if session exists, insert if not
+    const existing = await pool.query(
+      'SELECT id FROM linus_conversations WHERE session_id = $1 AND user_id = $2',
+      [sessionId, userId]
     )
 
-    return NextResponse.json({ conversation: result.rows[0] })
+    if (existing.rows.length > 0) {
+      // Update existing conversation
+      await pool.query(
+        `UPDATE linus_conversations SET messages = $1, summary = $2, provider = $3, model = $4, updated_at = NOW()
+         WHERE session_id = $5 AND user_id = $6`,
+        [JSON.stringify(messages || []), summary || null, provider || null, model || null, sessionId, userId]
+      )
+    } else {
+      // Insert new conversation
+      await pool.query(
+        `INSERT INTO linus_conversations (user_id, session_id, messages, summary, provider, model)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [userId, sessionId, JSON.stringify(messages || []), summary || null, provider || null, model || null]
+      )
+    }
+
+    return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('Linus conversations POST error:', err)
     return NextResponse.json({ error: 'Failed to save conversation' }, { status: 500 })
   }
 }
 
+// GET — list conversations for the current user
 export async function GET(req: NextRequest) {
   const userId = await getUserId(req)
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -45,7 +63,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const result = await pool.query(
-      'SELECT * FROM linus_conversations WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2',
+      'SELECT * FROM linus_conversations WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2',
       [userId, limit]
     )
     return NextResponse.json({ conversations: result.rows })

@@ -101,6 +101,7 @@ export const CommandBar = forwardRef<CommandBarHandle, CommandBarProps>(
   const [value, setValue] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
+  const chatSessionId = useRef(crypto.randomUUID())
   const [prefs, setPrefs] = useState<UserPreferences | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
   const [showReference, setShowReference] = useState(false)
@@ -135,6 +136,12 @@ export const CommandBar = forwardRef<CommandBarHandle, CommandBarProps>(
     // Save messages to IndexedDB (skip empty)
     if (messages.length > 0) {
       saveChatMessages(messages)
+      // Sync to PostgreSQL for admin dashboard (real-time)
+      syncEngine.syncConversation({
+        sessionId: chatSessionId.current,
+        messages: messages.map(m => ({ role: m.role, text: m.text })),
+        summary: messages.filter(m => m.role === 'user').slice(-1)[0]?.text || 'Chat session',
+      })
     }
   }, [messages])
 
@@ -265,13 +272,14 @@ export const CommandBar = forwardRef<CommandBarHandle, CommandBarProps>(
           // Reload memories so next session has them
           const updated = await loadLinusMemories()
           setMemories(updated)
-          // Sync to cloud for admin dashboard
+          // Final sync with summary to cloud for admin dashboard
           syncEngine.syncConversation({
+            sessionId: chatSessionId.current,
+            messages: msgs.map(m => ({ role: m.role, text: m.text })),
             summary: data.summary,
-            topics: data.topics || [],
-            actions: data.actions || [],
-            messageCount: msgs.length,
           })
+          // Start a new session for next conversation
+          chatSessionId.current = crypto.randomUUID()
         }
       } catch { /* silently fail — don't block the close */ }
     }

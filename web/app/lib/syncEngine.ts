@@ -383,10 +383,11 @@ export async function resolveTrackUrl(track: Track): Promise<string | null> {
 // ---------------------------------------------------------------------------
 
 export async function syncConversation(data: {
-  summary: string
-  topics: string[]
-  actions: string[]
-  messageCount: number
+  sessionId: string
+  messages: { role: string; text: string }[]
+  summary?: string
+  provider?: string
+  model?: string
 }) {
   try {
     await fetch('/api/linus/conversations', {
