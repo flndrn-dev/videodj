@@ -389,6 +389,10 @@ export async function syncConversation(data: {
   provider?: string
   model?: string
 }) {
+  if (!userId) {
+    console.warn('[syncEngine] syncConversation skipped — no userId. User not logged in.')
+    return
+  }
   try {
     const res = await fetch('/api/linus/conversations', {
       method: 'POST',
@@ -400,6 +404,7 @@ export async function syncConversation(data: {
       const err = await res.json().catch(() => ({}))
       console.warn('[syncEngine] Conversation sync failed:', res.status, err)
     } else {
+      console.log('[syncEngine] Conversation synced:', data.sessionId, data.messages?.length, 'msgs')
       notifySync('conversations')
     }
   } catch (err) {
