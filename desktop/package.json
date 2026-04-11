@@ -70,7 +70,7 @@
       "identity": null
     },
     "win": {
-      "icon": "resources/icon.ico",
+      "icon": "resources/icon.png",
       "target": [
         {
           "target": "nsis",
@@ -83,19 +83,25 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "resources/icon.ico"
+      "installerIcon": "resources/icon.png"
     },
     "linux": {
       "category": "AudioVideo",
-      "icon": "resources/icons",
+      "icon": "resources/icon.png",
       "target": [
         "AppImage",
         "deb"
       ]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "flndrn-dev",
+      "repo": "videodj"
     }
   },
   "dependencies": {
-    "electron-store": "^8.2.0"
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.3.0"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

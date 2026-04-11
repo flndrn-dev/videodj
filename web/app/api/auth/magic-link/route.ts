@@ -112,6 +112,9 @@ export async function POST(req: NextRequest) {
         from: 'videoDJ.Studio <noreply@videodj.studio>',
         to: email,
         subject: isSignup ? 'Welcome to videoDJ.Studio' : 'Sign in to videoDJ.Studio',
+        text: isSignup
+          ? `Welcome to videoDJ.Studio\n\nClick this link to activate your account: ${magicUrl}\n\nThis link expires in 15 minutes.`
+          : `Sign in to videoDJ.Studio\n\nClick this link to sign in: ${magicUrl}\n\nThis link expires in 15 minutes.\n\nIf you didn't request this, you can safely ignore this email.`,
         html: `
           <div style="background:#14141f;color:#e8e8f2;padding:48px 32px;font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;">
             <div style="text-align:center;margin-bottom:32px;">

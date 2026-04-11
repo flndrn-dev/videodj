@@ -18,6 +18,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   isPackaged: () => ipcRenderer.invoke('app:isPackaged'),
 
+  // Auto-update
+  checkForUpdate: () => ipcRenderer.invoke('app:checkForUpdate'),
+  installUpdate: () => ipcRenderer.invoke('app:installUpdate'),
+  onUpdateAvailable: (cb) => ipcRenderer.on('update:available', (_, version) => cb(version)),
+  onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_, version) => cb(version)),
+
   // Platform info
   platform: process.platform,
   isElectron: true,

@@ -3,6 +3,14 @@ const path = require('path')
 const { spawn } = require('child_process')
 const net = require('net')
 
+let autoUpdater = null
+try {
+  const { autoUpdater: au } = require('electron-updater')
+  autoUpdater = au
+} catch {
+  // electron-updater not available in dev
+}
+
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
@@ -234,6 +242,20 @@ ipcMain.handle('app:isPackaged', () => {
   return app.isPackaged
 })
 
+ipcMain.handle('app:checkForUpdate', async () => {
+  if (!autoUpdater) return { available: false }
+  try {
+    const result = await autoUpdater.checkForUpdates()
+    return { available: !!result?.updateInfo, version: result?.updateInfo?.version }
+  } catch {
+    return { available: false }
+  }
+})
+
+ipcMain.handle('app:installUpdate', () => {
+  if (autoUpdater) autoUpdater.quitAndInstall()
+})
+
 // ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
@@ -257,6 +279,32 @@ app.whenReady().then(async () => {
     console.error('Failed to start:', err)
     // Try to create window anyway — user might have started web dev server manually
     createWindow()
+  }
+
+  // Auto-update (production only)
+  if (!isDev && autoUpdater) {
+    autoUpdater.autoDownload = true
+    autoUpdater.autoInstallOnAppQuit = true
+
+    autoUpdater.on('update-available', (info) => {
+      console.log('[Update] Available:', info.version)
+      mainWindow?.webContents.send('update:available', info.version)
+    })
+
+    autoUpdater.on('update-downloaded', (info) => {
+      console.log('[Update] Downloaded:', info.version)
+      mainWindow?.webContents.send('update:downloaded', info.version)
+    })
+
+    autoUpdater.on('error', (err) => {
+      console.error('[Update] Error:', err)
+    })
+
+    // Check for updates every 4 hours
+    autoUpdater.checkForUpdates().catch(() => {})
+    setInterval(() => {
+      autoUpdater.checkForUpdates().catch(() => {})
+    }, 4 * 60 * 60 * 1000)
   }
 
   app.on('activate', () => {
