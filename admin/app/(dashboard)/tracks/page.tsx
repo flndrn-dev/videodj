@@ -172,13 +172,24 @@ export default function TracksPage() {
   }
 
   // Upload files from browser to MinIO — matches by filename to existing "No File" tracks
-  const handleUploadFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return
+  const handleUploadFiles = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return
+    const files = Array.from(fileList)
     setUploading(true)
     setUploadProgress({ done: 0, total: files.length, current: '' })
 
-    const noFileTracks = tracks.filter(t => !t.minio_key)
+    // Fetch ALL no-file tracks from the API (not just current page)
+    let noFileTracks: TrackRow[] = []
+    try {
+      const res = await fetch('/api/tracks?page=1&limit=9999&status=no_file')
+      const data = await res.json()
+      noFileTracks = data.tracks || []
+    } catch {
+      noFileTracks = tracks.filter(t => !t.minio_key)
+    }
+
     let uploaded = 0
+    let skipped = 0
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
@@ -186,10 +197,9 @@ export default function TracksPage() {
 
       // Find matching track by filename
       const match = noFileTracks.find(t => t.file_name?.toLowerCase() === file.name.toLowerCase())
-      if (!match) continue // Skip files that don't match any "No File" track
+      if (!match) { skipped++; continue }
 
       try {
-        // Get pre-signed upload URL
         const key = `users/${match.user_id}/tracks/${match.id}/${file.name}`
         const urlRes = await fetch('/api/tracks', {
           method: 'POST',
@@ -197,9 +207,8 @@ export default function TracksPage() {
           body: JSON.stringify({ action: 'upload_url', key, contentType: file.type || 'video/mp4' }),
         })
         const urlData = await urlRes.json()
-        if (!urlData.uploadUrl) continue
+        if (!urlData.uploadUrl) { skipped++; continue }
 
-        // Upload file to MinIO
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest()
           xhr.open('PUT', urlData.uploadUrl)
@@ -209,25 +218,25 @@ export default function TracksPage() {
           xhr.send(file)
         })
 
-        // Update minio_key in database
         await fetch('/api/tracks', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: match.id, minio_key: key }),
         })
 
-        // Update local state
         setTracks(prev => prev.map(t => t.id === match.id ? { ...t, minio_key: key } : t))
         uploaded++
       } catch {
-        console.error('Upload failed for', file.name)
+        skipped++
       }
     }
 
     setUploadProgress({ done: files.length, total: files.length, current: '' })
     setUploading(false)
+    // Reset file input so user can select again
+    if (fileInputRef.current) fileInputRef.current.value = ''
     if (uploaded > 0) fetchTracks()
-    alert(`Uploaded ${uploaded} of ${files.length} files`)
+    alert(`Uploaded: ${uploaded} | Skipped: ${skipped} (no matching track in DB)`)
   }
 
   const toggleSelect = (id: string) => {
