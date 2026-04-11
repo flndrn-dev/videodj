@@ -34,8 +34,8 @@ export default function UploadIndicator() {
           transition={{ duration: 0.2 }}
           style={{
             position: 'fixed',
-            bottom: 80,
-            left: 20,
+            top: 60,
+            left: 12,
             zIndex: 50,
             background: 'rgba(10, 10, 20, 0.92)',
             border: '1px solid #1a1a2e',
