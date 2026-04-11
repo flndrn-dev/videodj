@@ -410,18 +410,43 @@ export function SetupModal({ onClose, onLibraryLoaded, onAgentConnected }: Setup
                       </div>
                       <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'rgba(74,222,128,0.12)', color: '#4ade80', fontFamily: 'var(--font-mono)' }}>ACTIVE</span>
                     </div>
-                    <div style={{ marginTop: 12, padding: '8px 12px', borderRadius: 8, background: '#14141f', border: '1px solid #1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div>
-                        <div style={{ fontSize: 8, color: '#555570', fontFamily: 'var(--font-mono)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 3 }}>API Key</div>
-                        <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#888' }}>{showAgentKey && agentFullKey ? agentFullKey : apiKeyMasked}</span>
+                    {agentProvider === 'ollama' ? (
+                      /* Ollama: show URL + Model */
+                      <div style={{ marginTop: 12 }}>
+                        <div style={{ padding: '8px 12px', borderRadius: 8, background: '#14141f', border: '1px solid #1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 8, color: '#555570', fontFamily: 'var(--font-mono)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 3 }}>Ollama URL</div>
+                            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#888' }}>{showAgentKey ? agentEndpoint : agentEndpoint.replace(/(\d+\.\d+)\.\d+\.\d+/, '$1.***')}</span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <button onClick={() => setShowAgentKey(!showAgentKey)} title={showAgentKey ? 'Hide URL' : 'Show URL'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#555570', padding: 2 }}>
+                              {showAgentKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                            </button>
+                          </div>
+                        </div>
+                        <div style={{ padding: '8px 12px', borderRadius: 8, background: '#14141f', border: '1px solid #1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div>
+                            <div style={{ fontSize: 8, color: '#555570', fontFamily: 'var(--font-mono)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 3 }}>Model</div>
+                            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#888' }}>{agentModel || 'qwen2.5-coder:14b'}</span>
+                          </div>
+                          <button onClick={() => { handleDisconnect(); setShowAgentKey(false); setAgentFullKey('') }} style={{ padding: '5px 12px', borderRadius: 6, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', color: '#f87171', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>Disconnect</button>
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <button onClick={() => setShowAgentKey(!showAgentKey)} title={showAgentKey ? 'Hide key' : 'Show key'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#555570', padding: 2 }}>
-                          {showAgentKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                        </button>
-                        <button onClick={() => { handleDisconnect(); setShowAgentKey(false); setAgentFullKey('') }} style={{ padding: '5px 12px', borderRadius: 6, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', color: '#f87171', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>Disconnect</button>
+                    ) : (
+                      /* Other providers: show API Key */
+                      <div style={{ marginTop: 12, padding: '8px 12px', borderRadius: 8, background: '#14141f', border: '1px solid #1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div>
+                          <div style={{ fontSize: 8, color: '#555570', fontFamily: 'var(--font-mono)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 3 }}>API Key</div>
+                          <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#888' }}>{showAgentKey && agentFullKey ? agentFullKey : apiKeyMasked}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <button onClick={() => setShowAgentKey(!showAgentKey)} title={showAgentKey ? 'Hide key' : 'Show key'} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#555570', padding: 2 }}>
+                            {showAgentKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                          <button onClick={() => { handleDisconnect(); setShowAgentKey(false); setAgentFullKey('') }} style={{ padding: '5px 12px', borderRadius: 6, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', color: '#f87171', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>Disconnect</button>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 ) : (
                   /* ── Connect form ── */
