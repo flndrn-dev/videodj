@@ -264,7 +264,6 @@ export default function SupportPage() {
                 </button>
               </div>
             </>
-            </>
             )
           })() : (
             <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: 'var(--text-tertiary)' }}>

@@ -14,7 +14,7 @@ async function getPool() {
   return new pg.default.Pool({ connectionString: process.env.DATABASE_URL!, max: 3 })
 }
 
-async function generateTicketNumber(pool: ReturnType<Awaited<ReturnType<typeof getPool>>['connect']> extends never ? never : Awaited<ReturnType<typeof getPool>>, category: string): Promise<string> {
+async function generateTicketNumber(pool: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> }, category: string): Promise<string> {
   const prefix = TICKET_PREFIXES[category] || 'SUP'
   const today = new Date()
   const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '')
