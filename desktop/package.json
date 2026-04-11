@@ -70,7 +70,7 @@
       "identity": null
     },
     "win": {
-      "icon": "resources/icon.png",
+      "icon": "resources/icon.svg",
       "target": [
         {
           "target": "nsis",
@@ -83,11 +83,11 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "resources/icon.png"
+      "installerIcon": "resources/icon.svg"
     },
     "linux": {
       "category": "AudioVideo",
-      "icon": "resources/icon.png",
+      "icon": "resources/icon.svg",
       "target": [
         "AppImage",
         "deb"
