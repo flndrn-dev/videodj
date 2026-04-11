@@ -165,13 +165,17 @@ export default function SupportPage() {
                   onMouseLeave={e => { if (selectedTicket?.id !== ticket.id) e.currentTarget.style.background = 'transparent' }}>
                   <StatusIcon size={14} style={{ color: statusConfig[ticket.status]?.color, flexShrink: 0 }} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{ticket.subject}</p>
-                    <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{ticket.customer_email}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{ticket.subject}</p>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{ticket.customer_email}</p>
+                    </div>
                   </div>
                   <span className="text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold"
                     style={{ color: priorityColors[ticket.priority] }}>{ticket.priority}</span>
                   <span className="text-[10px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
-                    {selectedTicket?.id === ticket.id ? messages.length : '...'} msg
+                    {new Date(ticket.created_at).toLocaleDateString()}
                   </span>
                 </motion.div>
               )
@@ -182,12 +186,42 @@ export default function SupportPage() {
         {/* Ticket detail */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
           className="glass-card p-6">
-          {selectedTicket ? (
+          {selectedTicket ? (() => {
+            // Extract ticket metadata from first message attachments
+            const firstMsg = messages[0]
+            const meta = (firstMsg?.attachments as { category?: string; ticketNumber?: string; meta?: { ip?: string; country?: string; timezone?: string; os?: string } }) || {}
+            const categoryColors: Record<string, string> = { 'General Support': '#3b82f6', 'Finance Support': '#22c55e', 'Recover Support': '#f97316' }
+            return (
             <>
-              <div className="flex items-start justify-between mb-4">
+              <div className="flex items-start justify-between mb-3">
                 <div>
                   <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{selectedTicket.subject}</h3>
-                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{selectedTicket.customer_email}</p>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                    {selectedTicket.customer_name && selectedTicket.customer_name !== selectedTicket.customer_email?.split('@')[0]
+                      ? `${selectedTicket.customer_name} · ` : ''}{selectedTicket.customer_email}
+                  </p>
+                  {/* Ticket number + category */}
+                  <div className="flex items-center gap-2 mt-1.5">
+                    {meta.ticketNumber && (
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-elevated)', color: 'var(--brand-yellow)', border: '1px solid rgba(255,255,0,0.15)' }}>
+                        {meta.ticketNumber}
+                      </span>
+                    )}
+                    {meta.category && (
+                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${categoryColors[meta.category] || '#888'}20`, color: categoryColors[meta.category] || '#888' }}>
+                        {meta.category}
+                      </span>
+                    )}
+                  </div>
+                  {/* Hidden metadata */}
+                  {meta.meta && (
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-2">
+                      {meta.meta.country && <span className="text-[9px] font-mono" style={{ color: 'var(--text-tertiary)' }}>{meta.meta.country}</span>}
+                      {meta.meta.ip && <span className="text-[9px] font-mono" style={{ color: 'var(--text-tertiary)' }}>{meta.meta.ip}</span>}
+                      {meta.meta.os && <span className="text-[9px] font-mono truncate max-w-32" title={meta.meta.os} style={{ color: 'var(--text-tertiary)' }}>{meta.meta.os}</span>}
+                      {meta.meta.timezone && <span className="text-[9px] font-mono" style={{ color: 'var(--text-tertiary)' }}>{meta.meta.timezone}</span>}
+                    </div>
+                  )}
                 </div>
                 <select value={selectedTicket.status} onChange={e => handleStatusChange(selectedTicket.id, e.target.value)}
                   className="text-xs px-2 py-1 rounded-lg outline-none cursor-pointer"
@@ -230,7 +264,9 @@ export default function SupportPage() {
                 </button>
               </div>
             </>
-          ) : (
+            </>
+            )
+          })() : (
             <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: 'var(--text-tertiary)' }}>
               <Headset size={32} style={{ opacity: 0.3 }} />
               <span className="text-sm">Select a ticket to view</span>

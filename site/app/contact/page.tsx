@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useRef } from 'react'
 import { motion, useInView } from 'framer-motion'
 import Link from 'next/link'
-import { Send, Mail, Clock, Check } from 'lucide-react'
+import { Mail, Clock } from 'lucide-react'
 import { FaTwitch, FaTiktok, FaInstagram } from 'react-icons/fa'
 import { FaXTwitter } from 'react-icons/fa6'
+import { ContactForm } from '@/components/ContactForm'
 
 function Section({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   const ref = useRef(null)
@@ -24,14 +25,6 @@ function Section({ children, className = '' }: { children: React.ReactNode; clas
   )
 }
 
-const subjects = [
-  'General',
-  'Bug Report',
-  'Feature Request',
-  'Billing',
-  'Partnership',
-]
-
 const socials = [
   { icon: FaXTwitter, label: 'X / Twitter', href: 'https://x.com/videodj_studio' },
   { icon: FaTwitch, label: 'Twitch', href: 'https://twitch.tv/videodj_studio' },
@@ -40,27 +33,6 @@ const socials = [
 ]
 
 export default function ContactPage() {
-  const [form, setForm] = useState({ name: '', email: '', subject: 'General', message: '' })
-  const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!form.name || !form.email || !form.message) return
-    setSubmitting(true)
-    try {
-      await fetch('/api/contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
-      setSubmitted(true)
-    } catch {
-      // silent
-    }
-    setSubmitting(false)
-  }
-
   return (
     <div className="relative">
       {/* Nav */}
@@ -112,110 +84,7 @@ export default function ContactPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
           {/* Form */}
           <Section className="md:col-span-2">
-            {submitted ? (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="glass p-12 text-center"
-              >
-                <div
-                  className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"
-                  style={{ background: 'rgba(34,197,94,0.15)' }}
-                >
-                  <Check size={28} style={{ color: '#22c55e' }} />
-                </div>
-                <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>Message Sent</h2>
-                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  Thank you for reaching out. We typically respond within 24 hours.
-                </p>
-              </motion.div>
-            ) : (
-              <form onSubmit={handleSubmit} className="glass p-8 space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Name</label>
-                    <input
-                      type="text"
-                      value={form.name}
-                      onChange={e => setForm({ ...form, name: e.target.value })}
-                      required
-                      placeholder="Your name"
-                      className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-colors"
-                      style={{
-                        background: 'var(--bg-secondary)',
-                        border: '1px solid var(--border)',
-                        color: 'var(--text-primary)',
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Email</label>
-                    <input
-                      type="email"
-                      value={form.email}
-                      onChange={e => setForm({ ...form, email: e.target.value })}
-                      required
-                      placeholder="your@email.com"
-                      className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-colors"
-                      style={{
-                        background: 'var(--bg-secondary)',
-                        border: '1px solid var(--border)',
-                        color: 'var(--text-primary)',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Subject</label>
-                  <select
-                    value={form.subject}
-                    onChange={e => setForm({ ...form, subject: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none appearance-none cursor-pointer"
-                    style={{
-                      background: 'var(--bg-secondary)',
-                      border: '1px solid var(--border)',
-                      color: 'var(--text-primary)',
-                    }}
-                  >
-                    {subjects.map(s => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Message</label>
-                  <textarea
-                    value={form.message}
-                    onChange={e => setForm({ ...form, message: e.target.value })}
-                    required
-                    rows={6}
-                    placeholder="Tell us what's on your mind..."
-                    className="w-full px-4 py-3 rounded-xl text-sm outline-none resize-none"
-                    style={{
-                      background: 'var(--bg-secondary)',
-                      border: '1px solid var(--border)',
-                      color: 'var(--text-primary)',
-                    }}
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="cta-glow flex items-center gap-2 px-8 py-4 rounded-2xl text-sm font-semibold transition-transform hover:scale-105"
-                  style={{
-                    background: 'var(--brand-yellow)',
-                    color: 'var(--bg-primary)',
-                    opacity: submitting ? 0.7 : 1,
-                  }}
-                >
-                  {submitting ? 'Sending...' : 'Send Message'}
-                  {!submitting && <Send size={16} />}
-                </button>
-              </form>
-            )}
+            <ContactForm />
           </Section>
 
           {/* Sidebar */}
