@@ -43,25 +43,31 @@ export async function POST(req: NextRequest) {
     const customerName = lastName ? `${firstName} ${lastName}` : firstName
     let ticketNumber: string | null = null
 
-    // Save to database if DATABASE_URL is set and category is provided
-    if (process.env.DATABASE_URL && category) {
+    // Always save to database as a ticket — support tags get a ticket number, regular contacts get tracked for 48hr response
+    if (process.env.DATABASE_URL) {
       try {
         pool = await getPool()
-        ticketNumber = await generateTicketNumber(pool, category)
 
-        // Insert ticket
+        // Generate ticket number only for tagged support requests
+        if (category) {
+          ticketNumber = await generateTicketNumber(pool, category)
+        }
+
+        // Insert ticket — all contacts get tracked, tagged ones get a ticket number
+        const ticketPriority = category ? 'medium' : 'low'
         const ticketResult = await pool.query(
           `INSERT INTO tickets (subject, status, priority, customer_email, customer_name)
-           VALUES ($1, 'open', 'medium', $2, $3)
+           VALUES ($1, 'open', $2, $3, $4)
            RETURNING id`,
-          [subject, email, customerName]
+          [subject, ticketPriority, email, customerName]
         )
         const ticketId = ticketResult.rows[0].id
 
         // Insert first message with metadata
         const attachments = JSON.stringify({
-          category,
-          ticketNumber,
+          type: category ? 'support' : 'contact',
+          category: category || 'General Inquiry',
+          ticketNumber: ticketNumber || null,
           meta: meta || {},
         })
 
