@@ -158,10 +158,21 @@ Full spec: [GHOST.md](GHOST.md)
 - [x] **5.17 WebSocket to Ghost Server** — Connected, receives fix commands
 - [x] **5.18 Dynamic rule updates** — Accepts promoted rules from Ghost Server
 
-### Phase 4 — Connect Linus to Ollama (deferred to KVM8 migration)
-- [ ] **5.19 Linus → Ollama** — Primary on Qwen 32B, Claude as fallback (needs KVM8 with 32GB RAM)
-- [ ] **5.20 Test Linus via Qwen** — Verify all slash commands and chat work through Qwen 2.5 32B
-- [ ] **5.21 Linus telemetry to Ghost Server** — Pipe Linus usage stats to admin dashboard
+### Phase 4 — KVM8 Migration: Ollama + Qwen 32B
+
+**Current state (KVM4):** Qwen 2.5 Coder 14B, 16GB RAM — working for Ghost analysis but too small for 32B.
+**Target (KVM8):** Qwen 2.5 Coder 32B, 32GB RAM — dedicated Ollama server.
+
+Migration plan (when KVM8 is ready):
+
+- [ ] **5.19 KVM8 Setup** — Install Ollama on KVM8 (32GB RAM). Pull qwen2.5-coder:32b (~18GB). Secure with iptables (Docker bridge only). Set up as a Docker service for reliability.
+- [ ] **5.20 Ollama endpoint switch** — Update Ghost server + admin dashboard to use KVM8 Ollama URL instead of localhost:11434. Environment variable: `OLLAMA_URL=http://kvm8-ip:11434`.
+- [ ] **5.21 Linus → Ollama** — Switch Linus AI agent from Claude API to Ollama/Qwen 32B as primary. Claude as fallback. Update `AGENT_PROVIDER=ollama` + `AGENT_ENDPOINT=http://kvm8-ip:11434`.
+- [ ] **5.22 Test Linus via Qwen 32B** — Verify all 30+ slash commands, chat, metadata fixing, playlist building work through Qwen 32B. Compare quality vs Claude.
+- [ ] **5.23 Ghost enhanced analysis** — Qwen 32B can do deeper error analysis, better fix proposals, and more nuanced human-language explanations. Re-test Phase B with 32B.
+- [ ] **5.24 Multi-app serving** — Configure Ollama on KVM8 to serve: videoDJ Ghost, Linus agent, mavifinans, live support agent. Model management with keep-alive settings.
+- [ ] **5.25 KVM4 cleanup** — Remove Ollama from KVM4, free ~13GB disk + RAM. KVM4 becomes web/admin/Ghost only.
+- [ ] **5.26 Linus telemetry to Ghost** — Pipe Linus conversation stats, command usage, errors to Ghost for learning. Ghost can suggest Linus improvements.
 
 ---
 
