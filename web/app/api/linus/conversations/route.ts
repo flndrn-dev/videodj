@@ -18,11 +18,16 @@ async function getUserId(req: NextRequest): Promise<string | null> {
 
 // POST — save or update a conversation (upsert by session_id)
 export async function POST(req: NextRequest) {
-  const userId = await getUserId(req)
+  let userId = await getUserId(req)
+
+  const body = await req.json()
+  const { sessionId, messages, summary, provider, model } = body
+
+  // Fallback: accept userId in body if no session cookie (for internal sync calls)
+  if (!userId && body.userId) userId = body.userId
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
-    const { sessionId, messages, summary, provider, model } = await req.json()
     if (!sessionId) return NextResponse.json({ error: 'sessionId required' }, { status: 400 })
 
     // Upsert — update if session exists, insert if not

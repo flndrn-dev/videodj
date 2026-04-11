@@ -390,12 +390,18 @@ export async function syncConversation(data: {
   model?: string
 }) {
   try {
-    await fetch('/api/linus/conversations', {
+    const res = await fetch('/api/linus/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
+      credentials: 'same-origin',
+      body: JSON.stringify({ ...data, userId }),
     })
-    notifySync('conversations')
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      console.warn('[syncEngine] Conversation sync failed:', res.status, err)
+    } else {
+      notifySync('conversations')
+    }
   } catch (err) {
     console.error('[syncEngine] Conversation sync error:', err)
   }
