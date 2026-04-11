@@ -56,6 +56,9 @@ export function SetupModal({ onClose, onLibraryLoaded, onAgentConnected }: Setup
   const scanStartTime = scanState.startTime
 
   useEffect(() => {
+    // Reset scan state when modal opens — clears "Library loaded" from previous scan
+    scanManager.reset()
+    setScanState(scanManager.getState())
     scanManager.setOnComplete(onLibraryLoaded)
     const unsub = scanManager.onStateChange(setScanState)
     return unsub
