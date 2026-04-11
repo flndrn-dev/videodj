@@ -26,7 +26,7 @@ async function generateTicketNumber(pool: { query: (text: string, params?: unkno
      WHERE attachments::text LIKE $1`,
     [`%${pattern.replace(/%$/, '')}%`]
   )
-  const seq = (parseInt(result.rows[0].count) || 0) + 1
+  const seq = (parseInt(String(result.rows[0].count)) || 0) + 1
   return `${prefix}-${dateStr}-${String(seq).padStart(3, '0')}`
 }
 
