@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { S3Client, HeadObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, HeadObjectCommand, DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 async function getPool() {
@@ -161,7 +161,8 @@ export async function DELETE(req: NextRequest) {
 // POST — verify if MinIO file exists
 export async function POST(req: NextRequest) {
   try {
-    const { action, id, minioKey } = await req.json()
+    const body = await req.json()
+    const { action, id, minioKey, key, contentType } = body
 
     if (action === 'verify' && minioKey) {
       try {
@@ -182,6 +183,12 @@ export async function POST(req: NextRequest) {
       const command = new GetObjectCommand({ Bucket: String(MINIO_BUCKET), Key: String(minioKey) })
       const streamUrl = await getSignedUrl(s3, command, { expiresIn: 300 })
       return NextResponse.json({ streamUrl })
+    }
+
+    if (action === 'upload_url' && key) {
+      const command = new PutObjectCommand({ Bucket: String(MINIO_BUCKET), Key: String(key), ContentType: String(contentType || 'video/mp4') })
+      const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 })
+      return NextResponse.json({ uploadUrl, key })
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 })

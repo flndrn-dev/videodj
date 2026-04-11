@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Music, Search, CheckCircle, XCircle, AlertTriangle, Trash2, Shield, RefreshCw, Download, Pencil, X, Save, Play } from 'lucide-react'
+import { Music, Search, CheckCircle, XCircle, AlertTriangle, Trash2, Shield, RefreshCw, Download, Pencil, X, Save, Play, Upload } from 'lucide-react'
 
 interface TrackRow {
   id: string
@@ -54,6 +54,9 @@ export default function TracksPage() {
   const [recovering, setRecovering] = useState(false)
   const [testStatus, setTestStatus] = useState<Record<string, 'idle' | 'testing' | 'ok' | 'broken'>>({})
   const [bulkTesting, setBulkTesting] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0, current: '' })
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [bulkTestProgress, setBulkTestProgress] = useState({ done: 0, total: 0, ok: 0, broken: 0 })
 
   const flagTrackBad = async (trackId: string, bad: boolean, reason?: string) => {
@@ -166,6 +169,65 @@ export default function TracksPage() {
     }
 
     setBulkTesting(false)
+  }
+
+  // Upload files from browser to MinIO — matches by filename to existing "No File" tracks
+  const handleUploadFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setUploading(true)
+    setUploadProgress({ done: 0, total: files.length, current: '' })
+
+    const noFileTracks = tracks.filter(t => !t.minio_key)
+    let uploaded = 0
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      setUploadProgress({ done: i, total: files.length, current: file.name })
+
+      // Find matching track by filename
+      const match = noFileTracks.find(t => t.file_name?.toLowerCase() === file.name.toLowerCase())
+      if (!match) continue // Skip files that don't match any "No File" track
+
+      try {
+        // Get pre-signed upload URL
+        const key = `users/${match.user_id}/tracks/${match.id}/${file.name}`
+        const urlRes = await fetch('/api/tracks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'upload_url', key, contentType: file.type || 'video/mp4' }),
+        })
+        const urlData = await urlRes.json()
+        if (!urlData.uploadUrl) continue
+
+        // Upload file to MinIO
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest()
+          xhr.open('PUT', urlData.uploadUrl)
+          xhr.setRequestHeader('Content-Type', file.type || 'video/mp4')
+          xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject()
+          xhr.onerror = () => reject()
+          xhr.send(file)
+        })
+
+        // Update minio_key in database
+        await fetch('/api/tracks', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: match.id, minio_key: key }),
+        })
+
+        // Update local state
+        setTracks(prev => prev.map(t => t.id === match.id ? { ...t, minio_key: key } : t))
+        uploaded++
+      } catch {
+        console.error('Upload failed for', file.name)
+      }
+    }
+
+    setUploadProgress({ done: files.length, total: files.length, current: '' })
+    setUploading(false)
+    if (uploaded > 0) fetchTracks()
+    alert(`Uploaded ${uploaded} of ${files.length} files`)
   }
 
   const toggleSelect = (id: string) => {
@@ -381,6 +443,17 @@ export default function TracksPage() {
             style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #2a2a4e', background: 'transparent', color: '#888', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}
           >
             <RefreshCw size={12} /> Refresh
+          </button>
+
+          {/* Upload missing files — select video files to upload to MinIO for "No File" tracks */}
+          <input ref={fileInputRef} type="file" accept="video/*" multiple style={{ display: 'none' }}
+            onChange={e => handleUploadFiles(e.target.files)} />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(255,255,0,0.3)', background: 'rgba(255,255,0,0.06)', color: '#ffff00', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, opacity: uploading ? 0.5 : 1 }}
+          >
+            <Upload size={12} /> {uploading ? `Uploading ${uploadProgress.done}/${uploadProgress.total}...` : 'Upload Files'}
           </button>
 
           {/* Recover user library — select all files for a user and download */}
