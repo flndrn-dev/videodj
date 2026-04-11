@@ -120,8 +120,8 @@ export async function POST(
             const resend = new Resend(resendKey)
             await resend.emails.send({
               from: 'videoDJ.Studio Support <support@videodj.studio>',
-              to: ticket.customer_email,
-              subject: `Re: ${ticket.subject}`,
+              to: String(ticket.customer_email),
+              subject: `Re: ${String(ticket.subject)}`,
               html: `<div style="background:#0a0a14;color:#f0f0f8;padding:32px;font-family:system-ui,sans-serif;border-radius:16px;">
                 <p style="color:#9898b8;font-size:12px;margin-bottom:8px;">videoDJ.Studio Support replied:</p>
                 <p style="white-space:pre-wrap;line-height:1.6;">${text}</p>
