@@ -30,7 +30,7 @@ import { initErrorReporter, setUser as setErrorUser } from '@/app/lib/errorRepor
 import * as syncEngine from '@/app/lib/syncEngine'
 import * as scanManager from '@/app/lib/scanManager'
 import UploadIndicator from '@/components/UploadIndicator'
-import HelpWidget from '@/components/HelpWidget'
+// HelpWidget moved into Header component
 
 // ---------------------------------------------------------------------------
 // Main page
@@ -2035,8 +2035,7 @@ export default function Home() {
       {/* Upload progress indicator (bottom-left) */}
       <UploadIndicator />
 
-      {/* In-app help/support widget (bottom-left, above upload indicator) */}
-      <HelpWidget userEmail={currentUser?.email} userName={currentUser?.name} />
+      {/* Help widget moved to Header */}
 
       {/* Floating AI DJ agent (bottom-right FAB) */}
       <CommandBar

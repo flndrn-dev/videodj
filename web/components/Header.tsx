@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { SettingsIcon } from '@/components/ui/settings'
 import { Flag, Headphones, Volume2, Check, User, LogOut } from 'lucide-react'
 import { type AudioOutputDevice } from '@/app/lib/audioDevices'
+import HelpWidget from '@/components/HelpWidget'
 
 interface HeaderProps {
   languageFilter: string | null
@@ -98,8 +99,9 @@ export function Header({ languageFilter, onOpenSetup, onOpenStream, isLive, audi
         </div>
       </div>
 
-      {/* Right — stream + settings */}
+      {/* Right — help + stream + settings */}
       <div className="app-no-drag" style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, flex: 1, justifyContent: 'flex-end' }}>
+        <HelpWidget userEmail={userEmail} userName={userName} />
         <motion.button
           onClick={onOpenStream}
           whileHover={{ scale: 1.05 }}
