@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
       `SELECT id, user_id, title, artist, album, genre, bpm, key, duration,
               bad_file, bad_reason, minio_key, file_name, times_played, created_at
        FROM tracks ${where}
-       ORDER BY title ASC LIMIT $${idx} OFFSET $${idx + 1}`,
+       ORDER BY artist ASC, title ASC LIMIT $${idx} OFFSET $${idx + 1}`,
       paginatedParams
     )
 
