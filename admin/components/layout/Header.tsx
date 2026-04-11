@@ -15,6 +15,7 @@ const pageTitles: Record<string, { title: string; subtitle: string; accent: stri
   '/devzone': { title: 'Dev Zone', subtitle: 'Ideas & roadmap', accent: 'var(--brand-yellow)' },
   '/finance': { title: 'Finance', subtitle: 'Revenue & billing', accent: 'var(--brand-yellow)' },
   '/tracks': { title: 'Tracks', subtitle: 'Library management', accent: 'var(--brand-yellow)' },
+  '/subscribers': { title: 'Subscribers', subtitle: 'Early access & newsletter', accent: 'var(--brand-yellow)' },
 }
 
 // Search index — all navigable pages + keywords
@@ -28,6 +29,7 @@ const searchItems = [
   { href: '/tracks', label: 'Tracks', keywords: 'library music songs database minio verify' },
   { href: '/devzone', label: 'Dev Zone', keywords: 'ideas kanban roadmap board development' },
   { href: '/finance', label: 'Finance', keywords: 'revenue billing subscriptions payments mrr' },
+  { href: '/subscribers', label: 'Subscribers', keywords: 'email newsletter early access trial subscribers' },
 ]
 
 interface Notification {

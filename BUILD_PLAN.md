@@ -292,6 +292,21 @@ Full support ticket system with email integration and live chat.
 
 ---
 
+## TIER 11: Subscriber Management + Newsletter System (Admin)
+
+### Phase A — Subscriber Management
+- [ ] **11.1 Subscribers page** — New admin page `/subscribers` showing two tabs: Early Subscribers (pre_subscribers table) and Newsletter Subscribers.
+- [ ] **11.2 Early subscriber management** — List all pre-subscribers with: email, status (pending/invited/converted), source, subscribed date. Action: "Extend Trial" button → sets trial to 14 days when user converts. Action: "Convert to User" → creates user account with 14-day trial.
+- [ ] **11.3 Newsletter subscriber management** — Separate list of newsletter-only subscribers. Add/remove/import. Unsubscribe handling.
+
+### Phase B — Newsletter System
+- [ ] **11.4 Newsletter template builder** — Create email templates with subject, body (rich text or HTML), preview. Save templates for reuse.
+- [ ] **11.5 Newsletter scheduling** — Set date, time for sending. Queue-based: creates a scheduled job that sends at the specified time via Resend.
+- [ ] **11.6 Audience selector** — Choose recipients: all subscribers, early subscribers only, newsletter only, or custom segment.
+- [ ] **11.7 Send history** — Log of sent newsletters with: subject, recipients count, sent date, open rate (if Resend tracking enabled).
+
+---
+
 ## TIER 10: User Dashboard — Track & Playlist Management
 
 Mini version of Admin → Tracks for regular users in the DJ app. Users can manage their own library without admin access.

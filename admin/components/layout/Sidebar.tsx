@@ -11,6 +11,7 @@ import {
   Server,
   Users,
   Headset,
+  Mail,
   Lightbulb,
   DollarSign,
   Download,
@@ -93,6 +94,7 @@ const navSections = [
     items: [
       { href: '/users', icon: Users, label: 'Users', accent: 'yellow' },
       { href: '/support', icon: Headset, label: 'Support', accent: 'yellow' },
+      { href: '/subscribers', icon: Mail, label: 'Subscribers', accent: 'yellow' },
       { href: '/tracks', icon: Music, label: 'Tracks', accent: 'yellow' },
       { href: '/devzone', icon: Lightbulb, label: 'Dev Zone', accent: 'yellow' },
     ],
