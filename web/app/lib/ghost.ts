@@ -10,6 +10,8 @@
  * admin dashboard (admin.videodj.studio).
  */
 
+import { reportError } from '@/app/lib/errorReporter'
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -418,6 +420,9 @@ function handleError(message: string, stack: string, component: string, userActi
   const key = `${message}::${component}`
   const count = (errorCounts.get(key) || 0) + 1
   errorCounts.set(key, count)
+
+  // Also report to admin dashboard
+  reportError({ message, component, severity: 'error' })
 
   // Try local fix first
   tryLocalFix(message, component).then(result => {

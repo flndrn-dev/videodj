@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Server, Cpu, HardDrive, Wifi, Activity, Brain, Zap, Database, Clock, X, AlertTriangle, CheckCircle } from 'lucide-react'
+import { Server, Cpu, HardDrive, Wifi, Activity, Brain, Zap, Database, Clock, X, AlertTriangle, CheckCircle, Bug, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
 import { AnimatedCounter } from '@/components/dashboard/AnimatedCounter'
 import { useGhostHealth } from '@/app/hooks/useGhostHealth'
 
@@ -71,6 +71,24 @@ function GaugeRing({ value, max, label, accent, size = 120 }: {
   )
 }
 
+interface AppError {
+  id: string
+  error_message: string
+  stack_trace: string | null
+  component: string
+  severity: string
+  user_id: string | null
+  user_email: string | null
+  browser: string | null
+  url: string | null
+  created_at: string
+}
+
+interface SeverityCount {
+  severity: string
+  count: string
+}
+
 export default function SystemPage() {
   const { health } = useGhostHealth()
   const [systemData, setSystemData] = useState<SystemApiResponse | null>(null)
@@ -79,6 +97,10 @@ export default function SystemPage() {
   })
   const [loading, setLoading] = useState(true)
   const [expandedGauge, setExpandedGauge] = useState<string | null>(null)
+  const [appErrors, setAppErrors] = useState<AppError[]>([])
+  const [errorCounts, setErrorCounts] = useState<SeverityCount[]>([])
+  const [expandedError, setExpandedError] = useState<string | null>(null)
+  const [errorsLoading, setErrorsLoading] = useState(true)
 
   useEffect(() => {
     async function fetchSystem() {
@@ -101,6 +123,25 @@ export default function SystemPage() {
     }
     fetchSystem()
   }, [])
+
+  // Fetch app errors
+  const fetchErrors = useCallback(async () => {
+    try {
+      const res = await fetch('/api/errors?limit=50')
+      if (res.ok) {
+        const data = await res.json()
+        setAppErrors(data.errors || [])
+        setErrorCounts(data.counts || [])
+      }
+    } catch { /* silent */ }
+    setErrorsLoading(false)
+  }, [])
+
+  useEffect(() => {
+    fetchErrors()
+    const interval = setInterval(fetchErrors, 30000) // auto-refresh every 30s
+    return () => clearInterval(interval)
+  }, [fetchErrors])
 
   // Derive gauge values from real API data
   const heapUsedMB = systemData ? systemData.node.memory.heapUsed / 1048576 : 0
@@ -388,6 +429,136 @@ export default function SystemPage() {
           </div>
         </motion.div>
       </div>
+
+      {/* App Errors */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+        className="glass-card glass-card--system p-6"
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <Bug size={16} style={{ color: 'var(--status-red)' }} />
+          <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>App Errors</span>
+          <div className="flex items-center gap-2 ml-3">
+            {errorCounts.map(c => {
+              const color = c.severity === 'critical' ? 'var(--status-red)' : c.severity === 'error' ? 'var(--status-red)' : 'var(--status-amber)'
+              return (
+                <span key={c.severity} className="text-[10px] px-2 py-0.5 rounded-md font-mono flex items-center gap-1"
+                  style={{
+                    background: `color-mix(in srgb, ${color} 15%, transparent)`,
+                    color,
+                    animation: c.severity === 'critical' ? 'pulse 2s infinite' : undefined,
+                  }}>
+                  {c.count} {c.severity}
+                </span>
+              )
+            })}
+          </div>
+          <button
+            onClick={fetchErrors}
+            className="ml-auto p-1.5 rounded-md hover:opacity-80 transition-opacity"
+            style={{ color: 'var(--text-tertiary)' }}
+            title="Refresh errors"
+          >
+            <RefreshCw size={14} className={errorsLoading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+
+        {errorsLoading && appErrors.length === 0 ? (
+          <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Loading errors...</p>
+        ) : appErrors.length === 0 ? (
+          <div className="flex items-center gap-2 py-4">
+            <CheckCircle size={14} style={{ color: 'var(--status-green)' }} />
+            <span className="text-xs" style={{ color: 'var(--status-green)' }}>No errors reported</span>
+          </div>
+        ) : (
+          <div className="space-y-1 max-h-[500px] overflow-y-auto">
+            {appErrors.map(err => {
+              const isExpanded = expandedError === err.id
+              const severityColor = err.severity === 'critical' ? 'var(--status-red)' : err.severity === 'error' ? 'var(--status-red)' : 'var(--status-amber)'
+              const time = new Date(err.created_at)
+              const timeStr = time.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' + time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+
+              return (
+                <div key={err.id}>
+                  <button
+                    onClick={() => setExpandedError(isExpanded ? null : err.id)}
+                    className="w-full flex items-center gap-3 py-2 px-3 rounded-lg text-left hover:opacity-80 transition-opacity"
+                    style={{ background: isExpanded ? 'var(--bg-tertiary)' : 'transparent', border: '1px solid var(--border-primary)' }}
+                  >
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: severityColor }} />
+                    <span className="text-[10px] font-mono flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>{timeStr}</span>
+                    <span className="text-xs truncate flex-1" style={{ color: 'var(--text-secondary)' }}>
+                      {err.error_message.length > 80 ? err.error_message.slice(0, 80) + '...' : err.error_message}
+                    </span>
+                    <span className="text-[10px] font-mono flex-shrink-0 px-1.5 py-0.5 rounded"
+                      style={{ background: 'var(--bg-tertiary)', color: 'var(--text-tertiary)' }}>
+                      {err.component}
+                    </span>
+                    {err.user_email && (
+                      <span className="text-[10px] font-mono flex-shrink-0 hidden md:inline" style={{ color: 'var(--text-tertiary)' }}>
+                        {err.user_email}
+                      </span>
+                    )}
+                    {isExpanded ? <ChevronUp size={12} style={{ color: 'var(--text-tertiary)' }} /> : <ChevronDown size={12} style={{ color: 'var(--text-tertiary)' }} />}
+                  </button>
+
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="px-3 py-3 mx-3 mb-2 rounded-lg space-y-3" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
+                          <div>
+                            <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Full Message</span>
+                            <p className="text-xs font-mono mt-1 break-all" style={{ color: 'var(--text-secondary)' }}>{err.error_message}</p>
+                          </div>
+                          {err.stack_trace && (
+                            <div>
+                              <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Stack Trace</span>
+                              <pre className="text-[10px] font-mono mt-1 max-h-[200px] overflow-auto p-2 rounded"
+                                style={{ background: 'var(--bg-secondary)', color: 'var(--text-tertiary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                                {err.stack_trace}
+                              </pre>
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            <div>
+                              <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Severity</span>
+                              <p className="text-xs font-mono mt-0.5" style={{ color: severityColor }}>{err.severity}</p>
+                            </div>
+                            <div>
+                              <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Component</span>
+                              <p className="text-xs font-mono mt-0.5" style={{ color: 'var(--text-secondary)' }}>{err.component}</p>
+                            </div>
+                            {err.browser && (
+                              <div className="col-span-2">
+                                <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Browser</span>
+                                <p className="text-[10px] font-mono mt-0.5 truncate" style={{ color: 'var(--text-tertiary)' }}>{err.browser}</p>
+                              </div>
+                            )}
+                            {err.url && (
+                              <div className="col-span-2">
+                                <span className="text-[9px] uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>URL</span>
+                                <p className="text-[10px] font-mono mt-0.5 truncate" style={{ color: 'var(--text-tertiary)' }}>{err.url}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </motion.div>
     </div>
   )
 }

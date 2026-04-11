@@ -89,21 +89,52 @@ export async function POST(
   const pool = await getPool()
   try {
     const { id } = await params
-    const { sender, text } = await req.json()
+    const { sender, text, isInternal } = await req.json()
 
     if (!sender || !text) {
       return NextResponse.json({ error: 'sender and text are required' }, { status: 400 })
     }
 
+    // Store internal note flag in attachments JSONB
+    const attachments = isInternal ? JSON.stringify({ isInternal: true }) : null
+
     const messageResult = await pool.query(
-      `INSERT INTO ticket_messages (ticket_id, sender, text)
-       VALUES ($1, $2, $3)
+      `INSERT INTO ticket_messages (ticket_id, sender, text, attachments)
+       VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [id, sender, text]
+      [id, sender, text, attachments]
     )
 
     // Update ticket's updated_at
     await pool.query('UPDATE tickets SET updated_at = NOW() WHERE id = $1', [id])
+
+    // If sender is support and NOT an internal note, email the reply to customer
+    if (!isInternal && (sender.includes('videodj') || sender.includes('support') || sender.includes('admin'))) {
+      const ticketResult = await pool.query('SELECT customer_email, customer_name, subject FROM tickets WHERE id = $1', [id])
+      const ticket = ticketResult.rows[0]
+      if (ticket?.customer_email) {
+        try {
+          const { Resend } = await import('resend')
+          const resendKey = process.env.RESEND_API_KEY
+          if (resendKey) {
+            const resend = new Resend(resendKey)
+            await resend.emails.send({
+              from: 'videoDJ.Studio Support <support@videodj.studio>',
+              to: ticket.customer_email,
+              subject: `Re: ${ticket.subject}`,
+              html: `<div style="background:#0a0a14;color:#f0f0f8;padding:32px;font-family:system-ui,sans-serif;border-radius:16px;">
+                <p style="color:#9898b8;font-size:12px;margin-bottom:8px;">videoDJ.Studio Support replied:</p>
+                <p style="white-space:pre-wrap;line-height:1.6;">${text}</p>
+                <hr style="border-color:#1e1e38;margin:16px 0;" />
+                <p style="color:#5a5a78;font-size:11px;">Ticket: ${ticket.subject}</p>
+              </div>`,
+            })
+          }
+        } catch (err) {
+          console.error('Failed to send reply email:', err)
+        }
+      }
+    }
 
     return NextResponse.json({ message: messageResult.rows[0] }, { status: 201 })
   } catch (err) {

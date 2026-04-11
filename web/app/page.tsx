@@ -26,6 +26,7 @@ import { RadioIcon, type RadioIconHandle } from '@/components/ui/radio'
 import { PlayIcon, type PlayIconHandle } from '@/components/ui/play'
 import { LiaRandomSolid } from 'react-icons/lia'
 import { initGhost, destroyGhost } from '@/app/lib/ghost'
+import { initErrorReporter, setUser as setErrorUser } from '@/app/lib/errorReporter'
 import * as syncEngine from '@/app/lib/syncEngine'
 import * as scanManager from '@/app/lib/scanManager'
 import UploadIndicator from '@/components/UploadIndicator'
@@ -214,7 +215,12 @@ export default function Home() {
 
         // Fetch current user info for header avatar
         fetch('/api/auth/session').then(r => r.ok ? r.json() : null).then(data => {
-          if (data?.name) setCurrentUser({ name: data.name, email: data.email, avatar: data.profileData?.avatar })
+          if (data?.name) {
+            setCurrentUser({ name: data.name, email: data.email, avatar: data.profileData?.avatar })
+            // Initialize error reporter with user context
+            initErrorReporter()
+            setErrorUser(data.userId, data.email)
+          }
         }).catch(() => {})
 
         // Fetch tracks from PostgreSQL (source of truth)

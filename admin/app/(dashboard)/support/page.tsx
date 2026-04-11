@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Headset, Plus, X, Send, Circle, Clock, CheckCircle, AlertCircle } from 'lucide-react'
+import { Headset, Plus, X, Send, Circle, Clock, CheckCircle, AlertCircle, Eye } from 'lucide-react'
 
 interface Ticket {
   id: string; subject: string; status: string; priority: string;
@@ -11,7 +11,11 @@ interface Ticket {
 }
 interface TicketMessage {
   id: string; ticket_id: string; sender: string; text: string;
-  attachments: unknown[]; created_at: string;
+  attachments: Record<string, unknown> | unknown[] | null; created_at: string;
+}
+
+interface AdminUser {
+  id: string; email: string; name: string; role: string;
 }
 
 const statusConfig: Record<string, { icon: typeof Circle; color: string; bg: string }> = {
@@ -38,11 +42,16 @@ export default function SupportPage() {
   const [newMessage, setNewMessage] = useState('')
   const [newPriority, setNewPriority] = useState('medium')
   const [replyText, setReplyText] = useState('')
+  const [isInternal, setIsInternal] = useState(false)
   const [filter, setFilter] = useState('all')
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
 
   useEffect(() => {
     fetch('/api/tickets').then(r => r.json()).then(data => {
       if (data.tickets) setTickets(data.tickets)
+    }).catch(() => {})
+    fetch('/api/users').then(r => r.json()).then(data => {
+      if (data.users) setAdminUsers(data.users.filter((u: AdminUser) => u.role === 'admin' || u.role === 'support'))
     }).catch(() => {})
   }, [])
 
@@ -86,12 +95,46 @@ export default function SupportPage() {
       const res = await fetch(`/api/tickets/${selectedTicket.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sender: 'support@videodj.studio', text: replyText }),
+        body: JSON.stringify({ sender: 'support@videodj.studio', text: replyText, isInternal }),
       })
       const data = await res.json()
       if (data.message) setMessages(prev => [...prev, data.message])
     } catch { /* ignore */ }
     setReplyText('')
+    setIsInternal(false)
+  }
+
+  const handleAssign = async (ticketId: string, assignedTo: string | null) => {
+    try {
+      const res = await fetch(`/api/tickets/${ticketId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assigned_to: assignedTo || null }),
+      })
+      const data = await res.json()
+      if (data.ticket) {
+        setTickets(prev => prev.map(t => t.id === ticketId ? data.ticket : t))
+        if (selectedTicket?.id === ticketId) setSelectedTicket(data.ticket)
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Calculate first response time for a ticket
+  const getFirstResponseInfo = (ticket: Ticket): { text: string; color: string } => {
+    const ticketMessages = messages // only available for selected ticket
+    if (selectedTicket?.id !== ticket.id || ticketMessages.length <= 1) {
+      return { text: 'Awaiting', color: 'var(--status-amber)' }
+    }
+    const firstSupportReply = ticketMessages.find(m => m.sender.includes('videodj') || m.sender.includes('support') || m.sender.includes('admin'))
+    if (!firstSupportReply) return { text: 'Awaiting', color: 'var(--status-amber)' }
+    const created = new Date(ticket.created_at).getTime()
+    const replied = new Date(firstSupportReply.created_at).getTime()
+    const diffMs = replied - created
+    const hours = Math.floor(diffMs / 3600000)
+    const mins = Math.floor((diffMs % 3600000) / 60000)
+    if (hours > 24) return { text: `${Math.floor(hours / 24)}d ${hours % 24}h`, color: 'var(--status-red)' }
+    if (hours > 4) return { text: `${hours}h ${mins}m`, color: 'var(--status-amber)' }
+    return { text: `${hours}h ${mins}m`, color: 'var(--status-green)' }
   }
 
   const handleStatusChange = async (ticketId: string, status: string) => {
@@ -174,7 +217,13 @@ export default function SupportPage() {
                   </div>
                   <span className="text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold"
                     style={{ color: priorityColors[ticket.priority] }}>{ticket.priority}</span>
-                  <span className="text-[10px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                  {ticket.status === 'open' && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-medium"
+                      style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--status-amber)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                      Awaiting
+                    </span>
+                  )}
+                  <span className="text-[9px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
                     {new Date(ticket.created_at).toLocaleDateString()}
                   </span>
                 </motion.div>
@@ -223,43 +272,85 @@ export default function SupportPage() {
                     </div>
                   )}
                 </div>
-                <select value={selectedTicket.status} onChange={e => handleStatusChange(selectedTicket.id, e.target.value)}
-                  className="text-xs px-2 py-1 rounded-lg outline-none cursor-pointer"
-                  style={{ background: statusConfig[selectedTicket.status]?.bg, color: statusConfig[selectedTicket.status]?.color, border: 'none' }}>
-                  <option value="open">Open</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="closed">Closed</option>
-                </select>
+                <div className="flex flex-col gap-2 items-end shrink-0">
+                  <select value={selectedTicket.status} onChange={e => handleStatusChange(selectedTicket.id, e.target.value)}
+                    className="text-xs px-2 py-1 rounded-lg outline-none cursor-pointer"
+                    style={{ background: statusConfig[selectedTicket.status]?.bg, color: statusConfig[selectedTicket.status]?.color, border: 'none' }}>
+                    <option value="open">Open</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                  <select value={selectedTicket.assigned_to || ''} onChange={e => handleAssign(selectedTicket.id, e.target.value || null)}
+                    className="text-[10px] px-2 py-1 rounded-lg outline-none cursor-pointer"
+                    style={{ background: 'var(--bg-tertiary)', color: selectedTicket.assigned_to ? 'var(--text-secondary)' : 'var(--text-tertiary)', border: '1px solid var(--border-primary)' }}>
+                    <option value="">Unassigned</option>
+                    {adminUsers.map(u => (
+                      <option key={u.id} value={u.id}>{u.name || u.email}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
+
+              {/* SLA first response indicator */}
+              {(() => {
+                const sla = getFirstResponseInfo(selectedTicket)
+                return (
+                  <div className="flex items-center gap-2 mb-3 px-2 py-1.5 rounded-lg" style={{ background: 'var(--bg-tertiary)' }}>
+                    <Clock size={11} style={{ color: sla.color }} />
+                    <span className="text-[10px] font-medium" style={{ color: 'var(--text-tertiary)' }}>First response:</span>
+                    <span className="text-[10px] font-mono font-semibold" style={{ color: sla.color }}>{sla.text}</span>
+                  </div>
+                )
+              })()}
 
               {/* Messages */}
               <div className="space-y-3 max-h-[400px] overflow-y-auto mb-4 pr-1">
-                {messages.map((msg) => (
-                  <div key={msg.id} className={`flex ${msg.sender.includes('videodj') ? 'justify-end' : 'justify-start'}`}>
+                {messages.map((msg) => {
+                  const isNote = (msg.attachments as Record<string, unknown>)?.isInternal === true
+                  const isSupportSender = msg.sender.includes('videodj') || msg.sender.includes('support') || msg.sender.includes('admin')
+                  return (
+                  <div key={msg.id} className={`flex ${isSupportSender ? 'justify-end' : 'justify-start'}`}>
                     <div className="max-w-[85%] px-3 py-2 rounded-xl text-sm"
                       style={{
-                        background: msg.sender.includes('videodj') ? 'var(--brand-yellow-dim)' : 'var(--bg-tertiary)',
+                        background: isNote ? 'rgba(245,158,11,0.1)' : isSupportSender ? 'var(--brand-yellow-dim)' : 'var(--bg-tertiary)',
                         color: 'var(--text-primary)',
+                        border: isNote ? '1px solid rgba(245,158,11,0.25)' : 'none',
                       }}>
+                      {isNote && (
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Eye size={10} style={{ color: 'var(--status-amber)' }} />
+                          <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--status-amber)' }}>Internal Note</span>
+                        </div>
+                      )}
                       <p>{msg.text}</p>
                       <p className="text-[9px] mt-1" style={{ color: 'var(--text-tertiary)' }}>
                         {new Date(msg.created_at).toLocaleTimeString()}
                       </p>
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
 
               {/* Reply */}
               <div className="flex gap-2">
+                <button onClick={() => setIsInternal(!isInternal)}
+                  className="px-3 py-2.5 rounded-xl text-[10px] font-medium shrink-0"
+                  style={{
+                    background: isInternal ? 'rgba(245,158,11,0.15)' : 'var(--bg-tertiary)',
+                    color: isInternal ? 'var(--status-amber)' : 'var(--text-tertiary)',
+                    border: `1px solid ${isInternal ? 'rgba(245,158,11,0.3)' : 'var(--border-primary)'}`,
+                  }}>
+                  {isInternal ? 'Internal' : 'Reply'}
+                </button>
                 <input type="text" value={replyText} onChange={e => setReplyText(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleReply()}
-                  placeholder="Type reply..."
+                  placeholder={isInternal ? 'Add internal note...' : 'Type reply...'}
                   className="flex-1 px-4 py-2.5 rounded-xl text-sm outline-none"
                   style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }} />
                 <button onClick={handleReply} className="p-2.5 rounded-xl"
-                  style={{ background: replyText ? 'var(--brand-yellow)' : 'var(--bg-elevated)', color: replyText ? 'var(--bg-primary)' : 'var(--text-tertiary)' }}>
+                  style={{ background: replyText ? (isInternal ? 'rgba(245,158,11,0.3)' : 'var(--brand-yellow)') : 'var(--bg-elevated)', color: replyText ? (isInternal ? 'var(--status-amber)' : 'var(--bg-primary)') : 'var(--text-tertiary)' }}>
                   <Send size={16} />
                 </button>
               </div>
