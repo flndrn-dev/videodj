@@ -26,8 +26,8 @@ export default function UploadIndicator() {
 
   return (
     <div style={{
-      background: 'rgba(10, 10, 20, 0.95)',
-      borderTop: '1px solid #1a1a2e',
+      background: '#0d0d18',
+      borderTop: '2px solid #ffff0030',
       padding: 0,
     }}>
       {/* Header bar — always visible when uploading */}
@@ -35,13 +35,13 @@ export default function UploadIndicator() {
         onClick={() => setExpanded(!expanded)}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-          padding: '6px 12px', background: 'transparent', border: 'none',
+          padding: '10px 12px', background: 'rgba(255,255,0,0.03)', border: 'none',
           cursor: 'pointer', color: '#e0e0f0',
         }}
       >
-        <Cloud size={14} color="#ffff00" />
-        <span style={{ fontSize: 11, fontWeight: 600, flex: 1, textAlign: 'left' }}>
-          Uploading {totalDone}/{totalAll}...
+        <Cloud size={16} color="#ffff00" />
+        <span style={{ fontSize: 12, fontWeight: 700, flex: 1, textAlign: 'left' }}>
+          Uploading {totalDone}/{totalAll}
         </span>
         {progress.failed > 0 && (
           <span style={{ fontSize: 9, color: '#ef4444' }}>{progress.failed} failed</span>
