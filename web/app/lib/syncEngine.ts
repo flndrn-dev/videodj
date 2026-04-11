@@ -213,34 +213,51 @@ function fromDbRow(row: Record<string, unknown>): Partial<Track> {
   }
 }
 
-/** Sync a batch of tracks to PostgreSQL. Skips failures silently. */
+/** Sync tracks to PostgreSQL — sequential small batches to avoid rate limits. */
 export async function syncMetadata(tracks: Track[]) {
-  if (!userId) return
-  const BATCH = 100
+  if (!userId) {
+    console.warn('[syncEngine] syncMetadata skipped — no userId')
+    return
+  }
+  const BATCH = 10 // Small batches to avoid rate limiting
+  let saved = 0
+  let failed = 0
 
   for (let i = 0; i < tracks.length; i += BATCH) {
     const batch = tracks.slice(i, i + BATCH)
-    try {
-      await Promise.allSettled(batch.map(track =>
-        fetch('/api/tracks', {
+    // Process batch sequentially — one at a time within each batch
+    for (const track of batch) {
+      try {
+        const res = await fetch('/api/tracks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
           body: JSON.stringify({ id: track.id, user_id: userId, ...toDbFields(track) }),
-        }).then(async res => {
-          if (res.status === 409) {
-            // Already exists — update instead
-            await fetch('/api/tracks', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: track.id, ...toDbFields(track) }),
-            })
-          }
         })
-      ))
-    } catch (err) {
-      console.error('[syncEngine] Metadata batch sync error:', err)
+        if (res.status === 409) {
+          await fetch('/api/tracks', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ id: track.id, ...toDbFields(track) }),
+          })
+          saved++
+        } else if (res.ok) {
+          saved++
+        } else {
+          failed++
+          if (failed <= 3) console.warn('[syncEngine] Track save failed:', res.status, track.title)
+        }
+      } catch {
+        failed++
+      }
+    }
+    if ((i + BATCH) % 100 === 0 || i + BATCH >= tracks.length) {
+      console.log(`[syncEngine] Metadata sync progress: ${Math.min(i + BATCH, tracks.length)}/${tracks.length} (${saved} saved, ${failed} failed)`)
     }
   }
+  console.log(`[syncEngine] Metadata sync complete: ${saved} saved, ${failed} failed out of ${tracks.length}`)
+
 
   notifySync('tracks')
 }

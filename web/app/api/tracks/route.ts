@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import pg from 'pg'
-import { getClientIp, rateLimitResponse, RATE_LIMITS } from '@/app/lib/rateLimit'
+// Rate limiting removed — internal API used by sync engine for bulk uploads
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL!,
@@ -17,8 +17,7 @@ const pool = new pg.Pool({
 })
 
 export async function GET(req: NextRequest) {
-  const limited = rateLimitResponse(getClientIp(req), RATE_LIMITS.crud)
-  if (limited) return limited
+  // no rate limit — internal API
 
   const userId = req.nextUrl.searchParams.get('userId')
   const search = req.nextUrl.searchParams.get('search')
@@ -47,8 +46,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const limited = rateLimitResponse(getClientIp(req), RATE_LIMITS.crud)
-  if (limited) return limited
+  // no rate limit — internal API
 
   try {
     const data = await req.json()
@@ -95,8 +93,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const limited = rateLimitResponse(getClientIp(req), RATE_LIMITS.crud)
-  if (limited) return limited
+  // no rate limit — internal API
 
   try {
     const { id, ...updates } = await req.json()
@@ -129,8 +126,7 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const limited = rateLimitResponse(getClientIp(req), RATE_LIMITS.crud)
-  if (limited) return limited
+  // no rate limit — internal API
 
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
