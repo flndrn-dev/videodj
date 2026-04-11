@@ -63,8 +63,9 @@ export function Header({ languageFilter, onOpenSetup, onOpenStream, isLive, audi
       }}
     >
       <style>{`.app-drag-region{-webkit-app-region:drag}.app-no-drag{-webkit-app-region:no-drag}`}</style>
-      {/* Left — spacer for macOS traffic lights + filter badge */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+      {/* Left — help + filter badge */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }} className="app-no-drag">
+        <HelpWidget userEmail={userEmail} userName={userName} />
         <AnimatePresence>
           {languageFilter === 'nl' && (
             <motion.div
@@ -99,9 +100,8 @@ export function Header({ languageFilter, onOpenSetup, onOpenStream, isLive, audi
         </div>
       </div>
 
-      {/* Right — help + stream + settings */}
+      {/* Right — stream + settings */}
       <div className="app-no-drag" style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, flex: 1, justifyContent: 'flex-end' }}>
-        <HelpWidget userEmail={userEmail} userName={userName} />
         <motion.button
           onClick={onOpenStream}
           whileHover={{ scale: 1.05 }}
