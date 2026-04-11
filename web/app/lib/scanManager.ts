@@ -106,9 +106,6 @@ export async function processFiles(files: File[]) {
   // Refresh file refs for duplicates so playback works in this session
   for (const { existingTrack, file } of duplicateFiles) {
     setFileRef(existingTrack.id, file)
-    if (!existingTrack.minioKey && syncEngine.getUserId()) {
-      syncEngine.enqueueUpload(existingTrack.id, file)
-    }
   }
 
   // ── STEP 2: Fast metadata extraction — tags only, no audio decode ──
@@ -164,14 +161,9 @@ export async function processFiles(files: File[]) {
       setFileRef(item.track.id, item.blob)
     }
 
-    // Sync to PostgreSQL
+    // Sync metadata to PostgreSQL — no MinIO upload, files play from local disk
     if (syncEngine.getUserId()) {
       await syncEngine.syncMetadata(newTracks)
-
-      // ── STEP 4: Queue MinIO uploads (background, 1 at a time) ──
-      for (const item of items) {
-        syncEngine.enqueueUpload(item.track.id, item.blob)
-      }
     }
   }
 

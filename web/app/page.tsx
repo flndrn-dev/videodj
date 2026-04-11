@@ -29,7 +29,7 @@ import { initGhost, destroyGhost } from '@/app/lib/ghost'
 import { initErrorReporter, setUser as setErrorUser } from '@/app/lib/errorReporter'
 import * as syncEngine from '@/app/lib/syncEngine'
 import * as scanManager from '@/app/lib/scanManager'
-import UploadIndicator from '@/components/UploadIndicator'
+// UploadIndicator removed — no MinIO uploads in production
 // HelpWidget moved into Header component
 
 // ---------------------------------------------------------------------------
@@ -229,16 +229,10 @@ export default function Home() {
         console.log(`[restore] ${cloudTracks.length} tracks loaded from PostgreSQL`)
 
         if (cloudTracks.length > 0) {
-          const tracksAsFull = cloudTracks as Track[]
-          // Resolve MinIO URLs in parallel for all tracks with minioKey
-          const { urls: urlMap, failed } = await syncEngine.resolveVideoUrls(tracksAsFull)
-          const withUrls = tracksAsFull.map(t => urlMap.has(t.id) ? { ...t, videoUrl: urlMap.get(t.id) } : t)
-          setLibrary(withUrls)
+          // Load tracks from PostgreSQL — no MinIO, files play from local disk
+          setLibrary(cloudTracks as Track[])
           buildPlaylist()
-          console.log(`[restore] Resolved ${urlMap.size}/${cloudTracks.length} video URLs from MinIO`)
-          if (failed.length > 0) {
-            toast.error(`${failed.length} tracks could not load video from storage`)
-          }
+          console.log(`[restore] ${cloudTracks.length} tracks loaded`)
         }
 
         // Fetch playlists from PostgreSQL
@@ -255,27 +249,15 @@ export default function Home() {
             console.log('[sync] Tracks changed — refetching (preserving local videoUrls)')
             const fresh = await syncEngine.reconcile()
             if (fresh.length > 0) {
-              const tracksAsFull = fresh as Track[]
-              // Build a map of existing videoUrls (from current in-memory library)
-              // These are local object URLs from freshly scanned files — keep them
+              // Preserve local blob URLs from current library
               const currentLib = usePlayerStore.getState().library
               const localUrls = new Map<string, string>()
               for (const t of currentLib) {
-                if (t.videoUrl && t.videoUrl.startsWith('blob:')) {
-                  localUrls.set(t.id, t.videoUrl)
-                }
+                if (t.videoUrl) localUrls.set(t.id, t.videoUrl)
               }
-              // Resolve MinIO URLs for tracks that don't have a local blob URL
-              const needsCloudResolution = tracksAsFull.filter(t => !localUrls.has(t.id) && t.minioKey)
-              const { urls: urlMap } = needsCloudResolution.length > 0
-                ? await syncEngine.resolveVideoUrls(needsCloudResolution)
-                : { urls: new Map<string, string>() }
-              const withUrls = tracksAsFull.map(t => {
+              const withUrls = (fresh as Track[]).map(t => {
                 const localUrl = localUrls.get(t.id)
-                if (localUrl) return { ...t, videoUrl: localUrl }
-                const cloudUrl = urlMap.get(t.id)
-                if (cloudUrl) return { ...t, videoUrl: cloudUrl }
-                return t
+                return localUrl ? { ...t, videoUrl: localUrl } : t
               })
               setLibrary(withUrls)
               buildPlaylist()
@@ -337,34 +319,17 @@ export default function Home() {
     }
     restore()
 
-    // Refresh pre-signed MinIO URLs every 30 minutes (they expire after 24h)
-    const refreshInterval = setInterval(async () => {
-      const currentLib = usePlayerStore.getState().library
-      const refreshed = await syncEngine.refreshExpiredUrls(currentLib)
-      if (refreshed.size > 0) {
-        const updated = currentLib.map(t => refreshed.has(t.id) ? { ...t, videoUrl: refreshed.get(t.id) } : t)
-        setLibrary(updated)
-      }
-    }, 30 * 60 * 1000)
+    // No MinIO URL refresh needed — files play from local disk
     return () => clearInterval(refreshInterval)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Reset initialTime when loading a NEW track (not restoring the saved one)
   const handleLoadTrack = useCallback(async (deck: 'A' | 'B', track: Track) => {
-    // Resolve videoUrl on-the-fly if missing but minioKey exists
+    // Check if track has a playable URL (local file reference)
     let resolvedTrack = track
-    if (!track.videoUrl && track.minioKey) {
-      const url = await syncEngine.resolveTrackUrl(track)
-      if (url) {
-        resolvedTrack = { ...track, videoUrl: url }
-      } else {
-        toast.error(`Can't play "${track.title}" — file not found in storage`)
-        return
-      }
-    } else if (!track.videoUrl && !track.minioKey && !track.badFile) {
-      // No URL and no minioKey — can't play (but don't block if it has a blob URL set elsewhere)
-      toast.error(`Can't play "${track.title}" — no file available`)
+    if (!track.videoUrl && !track.badFile) {
+      toast.error(`Can't play "${track.title}" — open your music folder first (Settings → Library)`)
       return
     }
 
@@ -836,24 +801,15 @@ export default function Home() {
       // Reload tracks from PostgreSQL to get latest metadata, then rebuild playlist
       const freshTracks = (await syncEngine.reconcile()) as Track[]
       if (freshTracks.length > 0) {
-        // Preserve local blob URLs from current library (freshly scanned files)
+        // Preserve local blob URLs from current library
         const currentLib = usePlayerStore.getState().library
         const localUrls = new Map<string, string>()
         for (const t of currentLib) {
-          if (t.videoUrl && t.videoUrl.startsWith('blob:')) {
-            localUrls.set(t.id, t.videoUrl)
-          }
+          if (t.videoUrl) localUrls.set(t.id, t.videoUrl)
         }
-        const needsCloudResolution = freshTracks.filter(t => !localUrls.has(t.id) && t.minioKey)
-        const { urls: urlMap } = needsCloudResolution.length > 0
-          ? await syncEngine.resolveVideoUrls(needsCloudResolution)
-          : { urls: new Map<string, string>() }
         const withUrls = freshTracks.map(t => {
           const localUrl = localUrls.get(t.id)
-          if (localUrl) return { ...t, videoUrl: localUrl }
-          const cloudUrl = urlMap.get(t.id)
-          if (cloudUrl) return { ...t, videoUrl: cloudUrl }
-          return t
+          return localUrl ? { ...t, videoUrl: localUrl } : t
         })
         setLibrary(withUrls)
       }
@@ -1925,7 +1881,6 @@ export default function Home() {
       </div>
 
       {/* ── Bottom 40%: Video library / playlist ──────────────────────── */}
-      <div style={{ position: 'relative', height: '40%', flexShrink: 0 }}>
       <PlaylistPanel
         playlist={playlist}
         library={library}
@@ -2017,8 +1972,7 @@ export default function Home() {
           toast.success(`Exported ${tracks.length} tracks (JSON + CSV)`)
         }}
       />
-      <UploadIndicator />
-      </div>
+      {/* No upload indicator — files play from local disk */}
 
       {/* Playlist creation modal */}
       {showPlaylistModal && (
