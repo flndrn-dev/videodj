@@ -34,15 +34,13 @@ const EU_COUNTRIES = [
 ]
 
 const TIER_LABELS: Record<string, string> = {
-  free: 'Free',
-  fun_user: 'Fun User',
-  dj_user: 'DJ User',
+  free: 'Free Trial',
+  dj: 'DJ',
 }
 
 const TIER_COLORS: Record<string, string> = {
   free: '#555570',
-  fun_user: '#45b1e8',
-  dj_user: '#ffff00',
+  dj: '#ffff00',
 }
 
 const ROLE_COLORS: Record<string, string> = {
@@ -369,7 +367,7 @@ export default function ProfilePage() {
                 }}>
                   {TIER_LABELS[user.tier] || user.tier}
                 </span>
-                {user.trialStartedAt && (
+                {user.tier === 'free' && user.trialStartedAt && (
                   <span style={{
                     fontSize: 9, padding: '2px 8px', borderRadius: 4,
                     background: 'rgba(255,255,0,0.08)', color: '#ffff00',
@@ -380,7 +378,15 @@ export default function ProfilePage() {
                 )}
               </div>
               <div style={{ fontSize: 10, color: '#555570', marginTop: 4 }}>
-                {user.tier === 'free' ? 'Upgrade to unlock more features' : 'Your subscription is active'}
+                {user.tier === 'free'
+                  ? (user.trialStartedAt
+                    ? (() => {
+                        const start = new Date(user.trialStartedAt).getTime()
+                        const daysLeft = Math.max(0, Math.ceil((start + 7 * 24 * 60 * 60 * 1000 - Date.now()) / (24 * 60 * 60 * 1000)))
+                        return daysLeft > 0 ? `${daysLeft} days remaining in trial` : 'Trial expired \u2014 subscribe to continue'
+                      })()
+                    : 'Start your 7-day free trial')
+                  : 'Active \u2014 \u20ac29.99/month'}
               </div>
             </div>
             <motion.button

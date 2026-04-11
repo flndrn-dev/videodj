@@ -39,8 +39,7 @@ const statusColors: Record<string, { bg: string; text: string }> = {
 
 const tierColors: Record<string, { bg: string; text: string; label: string }> = {
   free: { bg: 'var(--bg-elevated)', text: 'var(--text-tertiary)', label: 'Free Trial' },
-  fun_user: { bg: 'rgba(59,130,246,0.1)', text: 'var(--system-blue)', label: 'Fun User' },
-  dj_user: { bg: 'var(--brand-yellow-dim)', text: 'var(--brand-yellow)', label: 'DJ User' },
+  dj: { bg: 'var(--brand-yellow-dim)', text: 'var(--brand-yellow)', label: 'DJ \u2014 \u20ac29.99/mo' },
 }
 
 const ALL_ROLES: { value: Role; label: string }[] = [

@@ -3,8 +3,8 @@
 import { useState, useRef } from 'react'
 import { motion, useInView } from 'framer-motion'
 import {
-  Disc3, Headphones, Crown, Check, X, ArrowRight, Sparkles, Zap,
-  Music, Sliders, Repeat, Gauge, Bot, ListMusic, Radio, Video,
+  Disc3, Crown, Check, X, ArrowRight, Sparkles, Zap,
+  Music, Repeat, Bot, ListMusic, Radio,
   Clock, MessageCircle,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -14,8 +14,8 @@ type BillingCycle = 'monthly' | 'annual'
 const tiers = [
   {
     id: 'trial',
-    name: '7-Day Trial',
-    tagline: 'Try everything free',
+    name: 'Free Trial',
+    tagline: 'Try everything for 7 days',
     icon: Disc3,
     monthlyPrice: 0,
     annualPrice: 0,
@@ -27,75 +27,39 @@ const tiers = [
     highlight: false,
     badge: null as string | null,
     features: [
-      { text: 'Full Fun User features for 7 days', included: true, icon: Clock },
-      { text: '14 days free for early subscribers', included: true, icon: Sparkles },
+      { text: '7 days free (14 for early subscribers)', included: true, icon: Clock },
+      { text: '100 tracks during trial', included: true, icon: Music },
+      { text: 'Full features during trial', included: true, icon: Sparkles },
+      { text: 'Dual video decks + automix', included: true, icon: Disc3 },
+      { text: 'Linus AI DJ agent', included: true, icon: Bot },
+      { text: 'Live streaming (Twitch/YouTube)', included: true, icon: Radio },
       { text: 'No credit card required', included: true, icon: Check },
-      { text: 'Unlimited track uploads', included: true, icon: Music },
-      { text: 'Auto crossfade + BPM detection', included: true, icon: Gauge },
-      { text: 'Effects: filter + delay', included: true, icon: Sliders },
-      { text: '2 hotcue slots', included: true, icon: Zap },
-      { text: 'Linus AI: 5 commands/day', included: true, icon: Bot },
-      { text: 'Automix engine', included: false, icon: Repeat },
-      { text: 'Live streaming', included: false, icon: Radio },
-      { text: 'Mix recording', included: false, icon: Video },
-    ],
-  },
-  {
-    id: 'fun',
-    name: 'Fun User',
-    tagline: 'For casual music video lovers',
-    icon: Headphones,
-    monthlyPrice: 9.99,
-    annualPrice: 99.99,
-    accent: '#ffff00',
-    accentDim: 'rgba(255,255,0,0.1)',
-    accentBorder: 'rgba(255,255,0,0.2)',
-    cta: 'Get Fun User',
-    ctaStyle: 'solid' as const,
-    highlight: true,
-    badge: 'Most Popular',
-    features: [
-      { text: 'Unlimited track uploads', included: true, icon: Music },
-      { text: 'Dual decks + auto crossfade', included: true, icon: Disc3 },
-      { text: 'Auto BPM & key detection', included: true, icon: Gauge },
-      { text: '3-band EQ with kill switches', included: true, icon: Sliders },
-      { text: 'Effects: filter + delay', included: true, icon: Sliders },
-      { text: '2 hotcue slots', included: true, icon: Zap },
-      { text: 'Autoplay mode', included: true, icon: Repeat },
-      { text: 'Linus AI: 5 commands/day', included: true, icon: Bot },
-      { text: '5 playlists', included: true, icon: ListMusic },
-      { text: 'Email support', included: true, icon: MessageCircle },
-      { text: 'Automix engine', included: false, icon: Repeat },
-      { text: 'Live streaming', included: false, icon: Radio },
-      { text: 'Mix recording', included: false, icon: Video },
     ],
   },
   {
     id: 'dj',
-    name: 'DJ User',
-    tagline: 'The full professional toolkit',
+    name: 'DJ',
+    tagline: 'Unlimited everything',
     icon: Crown,
-    monthlyPrice: 19.99,
-    annualPrice: 199.99,
-    accent: '#a78bfa',
-    accentDim: 'rgba(167,139,250,0.1)',
-    accentBorder: 'rgba(167,139,250,0.2)',
-    cta: 'Go Pro',
+    monthlyPrice: 29.99,
+    annualPrice: 279,
+    accent: '#ffff00',
+    accentDim: 'rgba(255,255,0,0.1)',
+    accentBorder: 'rgba(255,255,0,0.2)',
+    cta: 'Subscribe Now',
     ctaStyle: 'solid' as const,
-    highlight: false,
-    badge: null,
+    highlight: true,
+    badge: 'Most Popular',
     features: [
-      { text: 'Everything in Fun User', included: true, icon: Check },
-      { text: 'Full effects rack (6 effects)', included: true, icon: Sliders },
-      { text: '4 hotcue slots (A-D) + loops', included: true, icon: Zap },
-      { text: 'Automix with energy curves', included: true, icon: Repeat },
-      { text: 'Linus AI: unlimited commands', included: true, icon: Bot },
-      { text: 'Unlimited playlists', included: true, icon: ListMusic },
-      { text: 'Live stream to Twitch + YouTube', included: true, icon: Radio },
-      { text: 'Mix recording (audio + video)', included: true, icon: Video },
-      { text: 'Set history with tracklists', included: true, icon: Clock },
-      { text: 'AI beatmatching + tempo sync', included: true, icon: Gauge },
+      { text: 'Unlimited tracks', included: true, icon: Music },
+      { text: 'Dual video decks + automix', included: true, icon: Disc3 },
+      { text: 'Linus AI DJ agent', included: true, icon: Bot },
+      { text: 'Live streaming (Twitch/YouTube)', included: true, icon: Radio },
+      { text: 'Cloud sync + backup', included: true, icon: Zap },
+      { text: 'Shared catalog access', included: true, icon: ListMusic },
+      { text: 'Playlist sharing', included: true, icon: Repeat },
       { text: 'Priority support', included: true, icon: MessageCircle },
+      { text: 'All future features included', included: true, icon: Sparkles },
     ],
   },
 ]
@@ -183,7 +147,7 @@ function PricingCard({ tier, billing, delay }: { tier: typeof tiers[0]; billing:
           </div>
           {billing === 'annual' && tier.annualPrice > 0 && (
             <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-              €{tier.annualPrice.toFixed(2)}/year — <span style={{ color: '#22c55e' }}>save 17%</span>
+              €{tier.annualPrice.toFixed(2)}/year — <span style={{ color: '#22c55e' }}>save 22%</span>
             </p>
           )}
           {tier.monthlyPrice === 0 && (
@@ -296,7 +260,7 @@ export default function PricingPage() {
               Annual
               <span className="text-[10px] px-2 py-0.5 rounded-full font-bold"
                 style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>
-                -17%
+                -22%
               </span>
             </button>
           </div>
@@ -305,7 +269,7 @@ export default function PricingPage() {
 
       {/* Pricing cards */}
       <section className="px-6 pb-24">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+        <div className="max-w-3xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
           {tiers.map((tier, i) => (
             <PricingCard key={tier.id} tier={tier} billing={billing} delay={i * 0.1} />
           ))}
