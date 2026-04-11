@@ -59,6 +59,8 @@ export default function GhostPage() {
   const [expandedError, setExpandedError] = useState<number | null>(null)
   const [expandedKb, setExpandedKb] = useState<number | null>(null)
   const [expandedCard, setExpandedCard] = useState<string | null>(null)
+  const [proposals, setProposals] = useState<any[]>([])
+  const [analyzing, setAnalyzing] = useState(false)
 
   // Fetch all Ghost data
   useEffect(() => {
@@ -86,8 +88,35 @@ export default function GhostPage() {
     }
     fetchData()
     const timer = setInterval(fetchData, 10000) // Real-time: every 10s
+
+    // Fetch fix proposals
+    fetch('/api/ghost/analyze').then(r => r.ok ? r.json() : { proposals: [] }).then(data => setProposals(data.proposals || []))
+
     return () => clearInterval(timer)
   }, [])
+
+  // Trigger error pattern analysis via Qwen
+  async function triggerAnalysis() {
+    setAnalyzing(true)
+    await fetch('/api/ghost/analyze', { method: 'POST' })
+    const res = await fetch('/api/ghost/analyze')
+    const data = await res.json()
+    setProposals(data.proposals || [])
+    setAnalyzing(false)
+  }
+
+  // Approve or reject a fix proposal
+  async function handleProposalAction(id: string, action: 'approve' | 'reject') {
+    const res = await fetch('/api/ghost/analyze', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, action }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      setProposals(prev => prev.map(p => p.id === id ? data.proposal : p))
+    }
+  }
 
   // Compute success rate from telemetry
   const successRate = useMemo(() => {
@@ -518,6 +547,79 @@ export default function GhostPage() {
           )}
         </div>
       </div>
+
+      {/* Fix Proposals — Self-Healing Agent */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
+        className="glass-card glass-card--ghost p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--ghost-purple)' }}>
+            <Brain size={14} /> Fix Proposals
+            {proposals.filter(p => p.status === 'pending').length > 0 && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full font-mono"
+                style={{ background: 'var(--ghost-purple-dim)', color: 'var(--ghost-purple)' }}>
+                {proposals.filter(p => p.status === 'pending').length} pending
+              </span>
+            )}
+          </h3>
+          <button onClick={triggerAnalysis} disabled={analyzing}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] font-medium"
+            style={{ background: analyzing ? 'var(--bg-elevated)' : 'var(--ghost-purple-dim)', color: analyzing ? 'var(--text-tertiary)' : 'var(--ghost-purple)' }}>
+            {analyzing ? 'Analyzing...' : 'Run Analysis'}
+          </button>
+        </div>
+
+        {/* Proposal list */}
+        <div className="space-y-3">
+          {proposals.length === 0 ? (
+            <p className="text-sm text-center py-8" style={{ color: 'var(--text-tertiary)' }}>
+              No proposals yet. Click &quot;Run Analysis&quot; to analyze recent errors.
+            </p>
+          ) : proposals.map(p => (
+            <div key={p.id} className="p-4 rounded-xl" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
+              {/* Header: pattern + count + status */}
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-mono truncate" style={{ color: 'var(--text-primary)' }}>{p.error_pattern}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[9px] font-mono" style={{ color: 'var(--status-red)' }}>{p.error_count}x</span>
+                    <span className="text-[9px] font-mono" style={{ color: 'var(--system-blue)' }}>{p.component}</span>
+                    <span className="text-[9px] font-mono" style={{ color: 'var(--text-tertiary)' }}>{p.proposed_fix_type}</span>
+                  </div>
+                </div>
+                <span className="text-[9px] px-2 py-0.5 rounded font-semibold uppercase shrink-0" style={{
+                  background: p.status === 'pending' ? 'var(--ghost-purple-dim)' : p.status === 'approved' || p.status === 'applied' ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.1)',
+                  color: p.status === 'pending' ? 'var(--ghost-purple)' : p.status === 'approved' || p.status === 'applied' ? 'var(--status-green)' : 'var(--status-red)',
+                }}>{p.status}</span>
+              </div>
+
+              {/* LLM Analysis — rendered as markdown-ish */}
+              <div className="text-[11px] leading-relaxed mt-2 space-y-1" style={{ color: 'var(--text-secondary)' }}>
+                {p.llm_analysis?.split('\n\n').map((block: string, i: number) => {
+                  const bold = block.match(/^\*\*(.+?)\*\*\s*(.*)/)
+                  if (bold) return <p key={i}><strong style={{ color: 'var(--text-primary)' }}>{bold[1]}</strong> {bold[2]}</p>
+                  return <p key={i}>{block}</p>
+                })}
+              </div>
+
+              {/* Approve / Reject buttons — only for pending */}
+              {p.status === 'pending' && (
+                <div className="flex gap-2 mt-3">
+                  <button onClick={() => handleProposalAction(p.id, 'approve')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium"
+                    style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--status-green)', border: '1px solid rgba(34,197,94,0.25)' }}>
+                    <CheckCircle size={12} /> Approve & Apply
+                  </button>
+                  <button onClick={() => handleProposalAction(p.id, 'reject')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium"
+                    style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--status-red)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                    <XCircle size={12} /> Reject
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </motion.div>
     </div>
   )
 }
