@@ -517,13 +517,17 @@ export async function POST(req: NextRequest) {
           xai: 'https://api.x.ai/v1/chat/completions',
           deepseek: 'https://api.deepseek.com/v1/chat/completions',
           google: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-          ollama: 'http://172.18.0.1:11434/v1/chat/completions',
+          ollama: 'http://187.124.64.116:11434/v1/chat/completions',
         }
         const defaultModels: Record<string, string> = {
           openai: 'gpt-4o', xai: 'grok-3', deepseek: 'deepseek-chat', google: 'gemini-2.5-pro',
-          ollama: 'qwen2.5-coder:7b',
+          ollama: 'qwen2.5-coder:14b',
         }
-        const ep = endpoint || defaultEndpoints[provider] || endpoint
+        let ep = endpoint || defaultEndpoints[provider] || endpoint
+        // Ollama: user enters base URL (e.g. http://host:11434) — append /v1/chat/completions
+        if (provider === 'ollama' && ep && !ep.includes('/v1/')) {
+          ep = ep.replace(/\/+$/, '') + '/v1/chat/completions'
+        }
         const mdl = model || defaultModels[provider] || 'gpt-4o'
         if (ep) {
           result = await callOpenAICompatibleAPI(messages, context || {}, apiKey, ep, mdl, memories)

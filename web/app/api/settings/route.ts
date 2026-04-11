@@ -141,20 +141,38 @@ async function testApiKey(provider: string, apiKey: string, endpoint?: string, m
       return { connected: false, error: (err as Record<string, Record<string, string>>)?.error?.message || `Status ${res.status}` }
     }
 
-    // OpenAI-compatible providers (OpenAI, xAI, DeepSeek, Google, Ollama, Custom)
+    // Ollama — uses its own API, not OpenAI-compatible for validation
+    if (provider === 'ollama') {
+      const baseUrl = (endpoint || 'http://187.124.64.116:11434').replace(/\/+$/, '')
+      try {
+        // Test with /api/tags (list models)
+        const tagsRes = await fetch(`${baseUrl}/api/tags`)
+        if (!tagsRes.ok) return { connected: false, error: `Ollama unreachable: ${tagsRes.status}` }
+        const tags = await tagsRes.json()
+        const modelName = model || 'qwen2.5-coder:14b'
+        const available = tags.models?.map((m: { name: string }) => m.name) || []
+        if (available.length === 0) return { connected: false, error: 'Ollama running but no models installed' }
+        if (!available.some((m: string) => m.includes(modelName.split(':')[0]))) {
+          return { connected: false, error: `Model "${modelName}" not found. Available: ${available.join(', ')}` }
+        }
+        return { connected: true }
+      } catch (e) {
+        return { connected: false, error: `Cannot reach Ollama: ${(e as Error).message}` }
+      }
+    }
+
+    // OpenAI-compatible providers (OpenAI, xAI, DeepSeek, Google, Custom)
     const endpoints: Record<string, string> = {
       openai: 'https://api.openai.com/v1/chat/completions',
       xai: 'https://api.x.ai/v1/chat/completions',
       deepseek: 'https://api.deepseek.com/v1/chat/completions',
       google: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-      ollama: 'http://172.18.0.1:11434/v1/chat/completions',
     }
     const defaults: Record<string, string> = {
       openai: 'gpt-4o',
       xai: 'grok-3',
       deepseek: 'deepseek-chat',
       google: 'gemini-2.5-pro',
-      ollama: 'qwen2.5-coder:7b',
     }
 
     const url = endpoint || endpoints[provider] || endpoint
