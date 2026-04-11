@@ -234,9 +234,8 @@ export default function TracksPage() {
     setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
   const toggleSelectAll = () => {
-    const withFile = tracks.filter(t => t.minio_key)
-    if (selected.size === withFile.length) setSelected(new Set())
-    else setSelected(new Set(withFile.map(t => t.id)))
+    if (selected.size === tracks.length) setSelected(new Set())
+    else setSelected(new Set(tracks.map(t => t.id)))
   }
   const handleBulkDownload = async () => {
     const toDownload = tracks.filter(t => selected.has(t.id) && t.minio_key)
@@ -537,7 +536,7 @@ export default function TracksPage() {
             color: '#555', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1,
           }}>
             <span>#</span>
-            <input type="checkbox" checked={selected.size > 0 && selected.size === tracks.filter(t => t.minio_key).length} onChange={toggleSelectAll}
+            <input type="checkbox" checked={selected.size > 0 && selected.size === tracks.length} onChange={toggleSelectAll}
               style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#ffff00' }} />
             <span>Title / Artist</span>
             <span>User ID</span>
@@ -567,8 +566,7 @@ export default function TracksPage() {
                   {String((page - 1) * 50 + tracks.indexOf(track) + 1).padStart(5, '0')}
                 </span>
                 <input type="checkbox" checked={selected.has(track.id)} onChange={() => toggleSelect(track.id)}
-                  disabled={!track.minio_key}
-                  style={{ width: 14, height: 14, cursor: track.minio_key ? 'pointer' : 'default', accentColor: '#ffff00', opacity: track.minio_key ? 1 : 0.2 }} />
+                  style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#ffff00' }} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ color: '#ddd', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {track.title}

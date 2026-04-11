@@ -132,6 +132,7 @@ async function runUpload(job: UploadJob) {
 
     uploadProgress.completed++
     uploadProgress.currentFiles = uploadProgress.currentFiles.filter(f => f !== job.file.name)
+    activeTrackIds.delete(job.trackId)
   } catch (err) {
     console.error(`[syncEngine] Upload failed for ${job.trackId}:`, err)
     job.retries++
@@ -146,6 +147,7 @@ async function runUpload(job: UploadJob) {
       totalFailed++
       uploadProgress.failed++
       uploadProgress.currentFiles = uploadProgress.currentFiles.filter(f => f !== job.file.name)
+      activeTrackIds.delete(job.trackId)
     }
   } finally {
     activeUploads--
@@ -156,11 +158,18 @@ async function runUpload(job: UploadJob) {
   }
 }
 
+const activeTrackIds = new Set<string>()
+
 export function enqueueUpload(trackId: string, file: File, priority = false) {
   if (!userId) {
     console.warn('[syncEngine] No userId — skipping upload')
     return
   }
+  // Deduplicate — skip if already queued or currently uploading
+  if (activeTrackIds.has(trackId) || uploadQueue.some(j => j.trackId === trackId)) {
+    return
+  }
+  activeTrackIds.add(trackId)
   totalEnqueued++
   uploadQueue.push({ trackId, file, userId, priority, retries: 0 })
   notify()
