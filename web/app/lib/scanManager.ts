@@ -81,126 +81,117 @@ export async function processFiles(files: File[]) {
   }
   notify()
 
-  const items: { track: Track; blob: Blob }[] = []
-
   // Filter video files first
-  const videoFiles = files.filter(f => VIDEO_EXTENSIONS.test(f.name))
-  state.total = videoFiles.length
+  const allVideoFiles = files.filter(f => VIDEO_EXTENSIONS.test(f.name))
+
+  // ── STEP 1: Check database BEFORE processing ──────────────────
+  // This avoids expensive metadata extraction for files already in the library
+  state.phase = 'finding'
+  state.currentFile = 'Checking library for existing files...'
+  state.total = allVideoFiles.length
   notify()
 
-  // Process metadata in parallel batches of 4 for speed
-  const SCAN_CONCURRENCY = 4
-
-  for (let i = 0; i < videoFiles.length; i += SCAN_CONCURRENCY) {
-    const batch = videoFiles.slice(i, i + SCAN_CONCURRENCY)
-    const results = await Promise.allSettled(batch.map(async (file) => {
-      const name = file.name.replace(VIDEO_EXTENSIONS, '')
-      const videoUrl = URL.createObjectURL(file)
-      const meta = await extractVideoMetadata(file)
-      const id = crypto.randomUUID()
-      return {
-        track: {
-          id, title: name, artist: meta.artist, album: meta.album,
-          remixer: '', genre: meta.genre, language: meta.language, bpm: meta.bpm,
-          key: meta.key, released: '', duration: meta.duration, timesPlayed: 0,
-          thumbnail: meta.thumbnail, file: file.name, videoUrl,
-          effectiveStartTime: meta.effectiveStartTime,
-          effectiveEndTime: meta.effectiveEndTime,
-          loudness: meta.loudness,
-        } as Track,
-        blob: file,
-      }
-    }))
-
-    for (const result of results) {
-      if (result.status === 'fulfilled') items.push(result.value)
-    }
-
-    state.current = Math.min(i + SCAN_CONCURRENCY, videoFiles.length)
-    state.count = items.length
-    state.currentFile = batch[batch.length - 1].name.replace(VIDEO_EXTENSIONS, '').slice(0, 37)
-    notify()
-  }
-
-  state.phase = 'saving'
-  state.currentFile = 'Checking for duplicates...'
-  notify()
-
-  // Fetch existing tracks from PostgreSQL (not IndexedDB)
   const existing = (await syncEngine.reconcile()) as Track[]
+  const existingFileNames = new Set(existing.map(t => t.file?.toLowerCase()).filter(Boolean))
 
-  // Multi-strategy duplicate detection:
-  //  1. Same filename (exact match, case-insensitive)
-  //  2. Same artist + title (normalized — strips brackets, feat., punctuation)
-  //  3. Same duration ±2s + similar title (catches re-encodes)
-  const normalize = (s: string) => (s || '')
-    .toLowerCase()
-    .replace(/\(.*?\)|\[.*?\]/g, '')   // strip (Official Video), [HD], etc.
-    .replace(/\bfeat\.?|\bft\.?|\bvs\.?|\bversus\b/gi, '')
-    .replace(/[^\w\s]/g, '')           // strip punctuation
-    .replace(/\s+/g, ' ')
-    .trim()
+  // Split into new files (need processing) and duplicates (just refresh file refs)
+  const newFiles: File[] = []
+  const duplicateFiles: { file: File; existingTrack: Track }[] = []
 
-  const existingFiles = new Set(existing.map(t => t.file?.toLowerCase()).filter(Boolean))
-  const existingArtistTitle = new Set(
-    existing
-      .filter(t => t.artist && t.title)
-      .map(t => `${normalize(t.artist)}::${normalize(t.title)}`)
-  )
-  const existingByDuration = new Map<number, Track[]>()
-  for (const t of existing) {
-    if (t.duration > 0) {
-      const bucket = Math.round(t.duration)
-      if (!existingByDuration.has(bucket)) existingByDuration.set(bucket, [])
-      existingByDuration.get(bucket)!.push(t)
-    }
-  }
-
-  // Build a map: existing track -> matching new item (to refresh file refs for duplicates)
-  const findExisting = (t: Track): Track | null => {
-    if (t.file) {
-      const m = existing.find(e => e.file?.toLowerCase() === t.file?.toLowerCase())
-      if (m) return m
-    }
-    if (t.artist && t.title) {
-      const key = `${normalize(t.artist)}::${normalize(t.title)}`
-      const m = existing.find(e => e.artist && e.title && `${normalize(e.artist)}::${normalize(e.title)}` === key)
-      if (m) return m
-    }
-    if (t.duration > 0 && t.title) {
-      const normTitle = normalize(t.title)
-      for (let d = -2; d <= 2; d++) {
-        const bucket = existingByDuration.get(Math.round(t.duration) + d)
-        const m = bucket?.find(et => normalize(et.title) === normTitle)
-        if (m) return m
-      }
-    }
-    return null
-  }
-
-  const newItems: typeof items = []
-  const refreshedItems: { existingTrack: Track; file: File }[] = []
-
-  for (const item of items) {
-    const match = findExisting(item.track)
+  for (const file of allVideoFiles) {
+    const match = existing.find(e => e.file?.toLowerCase() === file.name.toLowerCase())
     if (match) {
-      // Duplicate — refresh File ref so playback works in this session
-      // Also queue upload if duplicate doesn't have minioKey yet
-      refreshedItems.push({ existingTrack: match, file: item.blob as File })
+      duplicateFiles.push({ file, existingTrack: match })
     } else {
-      newItems.push(item)
+      newFiles.push(file)
     }
   }
+
+  state.currentFile = `${newFiles.length} new, ${duplicateFiles.length} already in library`
+  notify()
 
   // Refresh File refs for duplicates so playback works in this session
-  // loadAllTracks() below will pick up the new refs and attach fresh videoUrls
-  for (const { existingTrack, file } of refreshedItems) {
+  for (const { existingTrack, file } of duplicateFiles) {
     setFileRef(existingTrack.id, file)
-    // Queue upload if no minioKey yet
     if (!existingTrack.minioKey && syncEngine.getUserId()) {
       syncEngine.enqueueUpload(existingTrack.id, file)
     }
   }
+
+  // ── STEP 2: Process only NEW files ─────────────────────────────
+  state.phase = 'processing'
+  state.total = newFiles.length
+  state.current = 0
+  state.count = 0
+  state.currentFile = newFiles.length > 0 ? 'Processing new files...' : 'No new files to process'
+  notify()
+
+  const items: { track: Track; blob: Blob }[] = []
+
+  if (newFiles.length > 0) {
+    // Process metadata in parallel batches of 4 for speed
+    const SCAN_CONCURRENCY = 4
+
+    for (let i = 0; i < newFiles.length; i += SCAN_CONCURRENCY) {
+      const batch = newFiles.slice(i, i + SCAN_CONCURRENCY)
+      const results = await Promise.allSettled(batch.map(async (file) => {
+        const name = file.name.replace(VIDEO_EXTENSIONS, '')
+        const videoUrl = URL.createObjectURL(file)
+        const meta = await extractVideoMetadata(file)
+        const id = crypto.randomUUID()
+        return {
+          track: {
+            id, title: name, artist: meta.artist, album: meta.album,
+            remixer: '', genre: meta.genre, language: meta.language, bpm: meta.bpm,
+            key: meta.key, released: '', duration: meta.duration, timesPlayed: 0,
+            thumbnail: meta.thumbnail, file: file.name, videoUrl,
+            effectiveStartTime: meta.effectiveStartTime,
+            effectiveEndTime: meta.effectiveEndTime,
+            loudness: meta.loudness,
+          } as Track,
+          blob: file,
+        }
+      }))
+
+      for (const result of results) {
+        if (result.status === 'fulfilled') items.push(result.value)
+      }
+
+      state.current = Math.min(i + SCAN_CONCURRENCY, newFiles.length)
+      state.count = items.length
+      state.currentFile = batch[batch.length - 1].name.replace(VIDEO_EXTENSIONS, '').slice(0, 37)
+      notify()
+    }
+  }
+
+  // ── STEP 3: Save new tracks ────────────────────────────────────
+  state.phase = 'saving'
+  state.currentFile = 'Saving new tracks...'
+  notify()
+
+  // No need for the old duplicate detection — we already filtered above
+  // But keep advanced detection (artist+title matching) for edge cases
+  const normalize = (s: string) => (s || '')
+    .toLowerCase()
+    .replace(/\(.*?\)|\[.*?\]/g, '')
+    .replace(/\bfeat\.?|\bft\.?|\bvs\.?|\bversus\b/gi, '')
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const existingArtistTitle = new Set(
+    existing.filter(t => t.artist && t.title)
+      .map(t => `${normalize(t.artist)}::${normalize(t.title)}`)
+  )
+
+  // Filter out any items that match by artist+title (catches re-encodes with different filenames)
+  const newItems = items.filter(item => {
+    if (item.track.artist && item.track.title) {
+      const key = `${normalize(item.track.artist)}::${normalize(item.track.title)}`
+      if (existingArtistTitle.has(key)) return false
+    }
+    return true
+  })
 
   const newTracks = newItems.map(i => i.track)
 
@@ -232,7 +223,7 @@ export async function processFiles(files: File[]) {
   const merged: Track[] = [
     ...existing.map(t => {
       // Re-attach local videoUrl if we just refreshed the file ref for this track
-      const refreshed = refreshedItems.find(r => r.existingTrack.id === t.id)
+      const refreshed = duplicateFiles.find(d => d.existingTrack.id === t.id)
       if (refreshed) {
         return { ...t, videoUrl: URL.createObjectURL(refreshed.file) }
       }
@@ -244,8 +235,8 @@ export async function processFiles(files: File[]) {
   state = {
     scanning: false,
     phase: 'done',
-    total: state.total,
-    current: state.total,
+    total: allVideoFiles.length,
+    current: allVideoFiles.length,
     count: newItems.length,
     currentFile: '',
     startTime: state.startTime,
@@ -258,16 +249,16 @@ export async function processFiles(files: File[]) {
   }
 
   // Toast notification — visible even if modal is closed
-  const refreshedCount = refreshedItems.length
+  const skippedCount = duplicateFiles.length
   if (newItems.length > 0) {
-    if (refreshedCount > 0) {
-      toast.success(`${newItems.length} new + ${refreshedCount} refreshed`)
+    if (skippedCount > 0) {
+      toast.success(`${newItems.length} new + ${skippedCount} already in library`)
     } else {
       toast.success(`${newItems.length} videos added`)
     }
-  } else if (refreshedCount > 0) {
-    toast.success(`${refreshedCount} videos refreshed for playback`)
-  } else if (items.length > 0) {
+  } else if (skippedCount > 0) {
+    toast.success(`${skippedCount} videos refreshed — all already in library`)
+  } else if (allVideoFiles.length > 0) {
     toast.info('All videos were already in the library')
   } else {
     toast.info('No video files found')
