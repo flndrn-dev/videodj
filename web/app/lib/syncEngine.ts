@@ -137,8 +137,8 @@ async function runUpload(job: UploadJob) {
     console.error(`[syncEngine] Upload failed for ${job.trackId}:`, err)
     job.retries++
     if (job.retries < MAX_RETRIES) {
-      // Exponential backoff: 1s, 4s, 16s
-      const delay = Math.pow(4, job.retries - 1) * 1000
+      // Backoff: 2s, 5s, 10s
+      const delay = [2000, 5000, 10000][job.retries - 1] || 5000
       setTimeout(() => {
         uploadQueue.push(job)
         processQueue()
@@ -148,6 +148,8 @@ async function runUpload(job: UploadJob) {
       uploadProgress.failed++
       uploadProgress.currentFiles = uploadProgress.currentFiles.filter(f => f !== job.file.name)
       activeTrackIds.delete(job.trackId)
+      permanentlyFailed.add(job.trackId)
+      console.warn(`[syncEngine] Upload permanently failed for "${job.file.name}" after ${MAX_RETRIES} retries — skipping`)
     }
   } finally {
     activeUploads--
@@ -159,14 +161,15 @@ async function runUpload(job: UploadJob) {
 }
 
 const activeTrackIds = new Set<string>()
+const permanentlyFailed = new Set<string>()
 
 export function enqueueUpload(trackId: string, file: File, priority = false) {
   if (!userId) {
     console.warn('[syncEngine] No userId — skipping upload')
     return
   }
-  // Deduplicate — skip if already queued or currently uploading
-  if (activeTrackIds.has(trackId) || uploadQueue.some(j => j.trackId === trackId)) {
+  // Skip if already queued, uploading, or permanently failed in this session
+  if (activeTrackIds.has(trackId) || permanentlyFailed.has(trackId) || uploadQueue.some(j => j.trackId === trackId)) {
     return
   }
   activeTrackIds.add(trackId)
