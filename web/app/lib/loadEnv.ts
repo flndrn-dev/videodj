@@ -38,7 +38,7 @@ async function loadFromDB(): Promise<Record<string, string>> {
     const result = await pool.query('SELECT key, value FROM app_settings')
     await pool.end()
     const settings: Record<string, string> = {}
-    for (const row of result.rows) {
+    for (const row of result.rows as { key: string; value: string }[]) {
       settings[row.key] = row.value
     }
     dbCache = settings
