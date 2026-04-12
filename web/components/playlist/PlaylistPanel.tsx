@@ -8,7 +8,7 @@ import { SquarePenIcon } from '@/components/ui/square-pen'
 import { CheckIcon } from '@/components/ui/check'
 import { SearchIcon } from '@/components/ui/search'
 import { XIcon } from '@/components/ui/x'
-import { Trash2, Music, ListMusic, Plus, User, Database, ChevronDown, PanelRightOpen, PanelRightClose, CloudCheck, CloudAlert } from 'lucide-react'
+import { Trash2, Music, ListMusic, Plus, User, Database, ChevronDown, PanelRightOpen, PanelRightClose, CircleCheck, CloudOff } from 'lucide-react'
 import type { Track, UserPlaylist } from '@/app/hooks/usePlayerStore'
 import { formatTime } from '@/app/hooks/usePlayerStore'
 
@@ -291,8 +291,8 @@ const TrackRow = memo(function TrackRow({
       {/* Health status */}
       <span title={track.badFile ? (track.badReason || 'Bad file') : 'Healthy'} style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginRight: 4 }}>
         {track.badFile
-          ? <CloudAlert size={14} color="#ef4444" />
-          : <CloudCheck size={14} color="#4ade80" />
+          ? <CloudOff size={14} color="#ef4444" />
+          : <CircleCheck size={14} color="#4ade80" />
         }
       </span>
 

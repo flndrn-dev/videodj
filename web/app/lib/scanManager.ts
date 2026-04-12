@@ -8,7 +8,7 @@
  */
 
 import type { Track } from '@/app/hooks/usePlayerStore'
-import { setFileRef, saveDirectoryHandle, loadDirectoryHandle } from '@/app/lib/db'
+import { setFileRef, getFileRef, saveDirectoryHandle, loadDirectoryHandle } from '@/app/lib/db'
 import { extractFastMetadata } from '@/app/lib/extractMetadata'
 import { toast } from 'sonner'
 import * as syncEngine from '@/app/lib/syncEngine'
@@ -310,4 +310,114 @@ export async function reconnectFolder(existingTracks: Partial<Track>[]): Promise
     console.warn('[reconnectFolder] Failed:', err)
     return null
   }
+}
+
+// ---------------------------------------------------------------------------
+// Health Scan — test each track's playability via hidden video element
+// ---------------------------------------------------------------------------
+
+export interface HealthResult {
+  total: number
+  healthy: number
+  broken: number
+  noFile: number
+}
+
+type HealthListener = (progress: { done: number; total: number; current: string; healthy: number; broken: number }) => void
+let healthListeners: HealthListener[] = []
+
+export function onHealthProgress(fn: HealthListener): () => void {
+  healthListeners.push(fn)
+  return () => { healthListeners = healthListeners.filter(l => l !== fn) }
+}
+
+/**
+ * Test each track by loading into a hidden video element.
+ * Flags broken tracks as bad_file=true in PostgreSQL.
+ * Clears bad_file flag for tracks that pass.
+ *
+ * @param tracks — library tracks to test (must have videoUrl or fileRef)
+ * @param onUpdate — called for each track result to update UI
+ */
+export async function healthScan(
+  tracks: Track[],
+  onUpdate: (trackId: string, badFile: boolean, badReason: string | null) => void,
+): Promise<HealthResult> {
+  const result: HealthResult = { total: tracks.length, healthy: 0, broken: 0, noFile: 0 }
+
+  // Only test tracks that have file refs (blob URLs)
+  const testable = tracks.filter(t => t.videoUrl || getFileRef(t.id))
+  const untestable = tracks.length - testable.length
+  result.noFile = untestable
+
+  console.log(`[healthScan] Testing ${testable.length} tracks (${untestable} without file refs)`)
+  toast.info(`Health scan: testing ${testable.length} tracks...`)
+
+  // Test 3 at a time for speed
+  const CONCURRENCY = 3
+  let done = 0
+
+  async function testOne(track: Track): Promise<void> {
+    const videoUrl = track.videoUrl || (getFileRef(track.id) ? URL.createObjectURL(getFileRef(track.id)!) : null)
+    if (!videoUrl) {
+      result.noFile++
+      done++
+      return
+    }
+
+    try {
+      const status = await new Promise<'ok' | 'broken'>((resolve) => {
+        const vid = document.createElement('video')
+        vid.preload = 'metadata'
+        const timeout = setTimeout(() => { vid.src = ''; resolve('broken') }, 8000)
+        vid.onloadedmetadata = () => {
+          clearTimeout(timeout)
+          // Check if duration is valid
+          if (vid.duration > 0 && isFinite(vid.duration)) {
+            resolve('ok')
+          } else {
+            resolve('broken')
+          }
+          vid.src = ''
+        }
+        vid.onerror = () => { clearTimeout(timeout); vid.src = ''; resolve('broken') }
+        vid.src = videoUrl
+      })
+
+      if (status === 'ok') {
+        result.healthy++
+        if (track.badFile) {
+          // Clear bad flag — file is actually healthy
+          onUpdate(track.id, false, null)
+          await syncEngine.syncTrackUpdate(track.id, { badFile: false, badReason: undefined })
+        }
+      } else {
+        result.broken++
+        if (!track.badFile) {
+          onUpdate(track.id, true, 'Failed health scan — could not load metadata')
+          await syncEngine.syncTrackUpdate(track.id, { badFile: true, badReason: 'Failed health scan — could not load metadata' })
+        }
+      }
+    } catch {
+      result.broken++
+    }
+
+    done++
+    healthListeners.forEach(fn => fn({
+      done, total: testable.length,
+      current: track.title || track.file || '',
+      healthy: result.healthy, broken: result.broken,
+    }))
+  }
+
+  // Process in batches
+  for (let i = 0; i < testable.length; i += CONCURRENCY) {
+    const batch = testable.slice(i, i + CONCURRENCY)
+    await Promise.all(batch.map(testOne))
+  }
+
+  console.log(`[healthScan] Complete: ${result.healthy} healthy, ${result.broken} broken, ${result.noFile} no file`)
+  toast.success(`Health scan: ${result.healthy} healthy, ${result.broken} broken`)
+
+  return result
 }

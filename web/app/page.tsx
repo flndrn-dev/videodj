@@ -2019,12 +2019,21 @@ export default function Home() {
         {showSetup && (
           <SetupModal
             onClose={() => setShowSetup(false)}
-            onLibraryLoaded={tracks => {
+            onLibraryLoaded={async tracks => {
               if (tracks.length > 0) {
                 setLibrary(tracks)
                 buildPlaylist()
               }
               toast.success('Library ready')
+
+              // Auto health scan — test playability of all tracks
+              if (tracks.length > 0) {
+                setTimeout(async () => {
+                  await scanManager.healthScan(tracks, (trackId, badFile, badReason) => {
+                    updateTrack(trackId, { badFile, badReason: badReason || undefined })
+                  })
+                }, 1000)
+              }
             }}
             onAgentConnected={() => {
               // Don't close modal — stay on settings, just trigger Linus welcome
