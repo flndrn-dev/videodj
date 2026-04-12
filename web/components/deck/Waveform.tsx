@@ -33,6 +33,7 @@ export function Waveform({ videoUrl, currentTime, duration, playing, accent, onS
 
   // Frequency band peaks: each bar has { low, mid, high } energy values
   const bandsRef = useRef<{ low: number; mid: number; high: number }[]>([])
+  const [bandsReady, setBandsReady] = useState(false)
 
   // Measure container
   useEffect(() => {
@@ -50,6 +51,7 @@ export function Waveform({ videoUrl, currentTime, duration, playing, accent, onS
   useEffect(() => {
     if (!videoUrl || width === 0) return
     let cancelled = false
+    setBandsReady(false)
     const numBars = Math.floor(width / 3) // 2px bar + 1px gap
 
     async function extract() {
@@ -127,6 +129,7 @@ export function Waveform({ videoUrl, currentTime, duration, playing, accent, onS
             mid: b.mid / maxMid,
             high: b.high / maxHigh,
           }))
+          setBandsReady(true)
         }
         ctx.close()
       } catch (err) {
@@ -225,6 +228,7 @@ export function Waveform({ videoUrl, currentTime, duration, playing, accent, onS
   }, [currentTime, duration, width, height, accent])
 
   // Animation loop — redraw on every frame when playing for smooth playhead
+  // Also redraw when bandsReady changes (extraction just finished)
   useEffect(() => {
     function loop() {
       draw()
@@ -236,7 +240,7 @@ export function Waveform({ videoUrl, currentTime, duration, playing, accent, onS
       draw()
     }
     return () => cancelAnimationFrame(rafRef.current)
-  }, [playing, draw])
+  }, [playing, draw, bandsReady])
 
   // Click to seek
   const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
