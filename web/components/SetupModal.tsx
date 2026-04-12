@@ -78,7 +78,7 @@ export function SetupModal({ onClose, onLibraryLoaded, onAgentConnected }: Setup
 
   // Ollama state (separate from cloud API providers)
   const [ollamaEndpoint, setOllamaEndpoint] = useState('http://172.18.0.1:11434/v1/chat/completions')
-  const [ollamaModel, setOllamaModel] = useState('qwen2.5-coder:7b')
+  const [ollamaModel, setOllamaModel] = useState('qwen2.5-coder:14b')
   const [ollamaKey, setOllamaKey] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -110,7 +110,7 @@ export function SetupModal({ onClose, onLibraryLoaded, onAgentConnected }: Setup
     xai: { endpoint: 'https://api.x.ai/v1/chat/completions', model: 'grok-3', label: 'xAI (Grok)' },
     deepseek: { endpoint: 'https://api.deepseek.com/v1/chat/completions', model: 'deepseek-chat', label: 'DeepSeek' },
     google: { endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', model: 'gemini-2.5-pro', label: 'Google (Gemini)' },
-    ollama: { endpoint: 'http://172.18.0.1:11434/v1/chat/completions', model: 'qwen2.5-coder:7b', label: 'Ollama (Qwen 2.5 Coder 7B)' },
+    ollama: { endpoint: 'http://187.124.64.116:11434', model: 'qwen2.5-coder:14b', label: 'Ollama (Qwen 2.5 Coder 14B)' },
     custom: { endpoint: '', model: '', label: 'Custom / Self-hosted' },
   }
 
@@ -577,7 +577,7 @@ export function SetupModal({ onClose, onLibraryLoaded, onAgentConnected }: Setup
                         <input
                           value={ollamaModel}
                           onChange={e => setOllamaModel(e.target.value)}
-                          placeholder="qwen2.5-coder:7b"
+                          placeholder="qwen2.5-coder:14b"
                           style={inputStyle}
                         />
                       </div>
@@ -609,7 +609,7 @@ export function SetupModal({ onClose, onLibraryLoaded, onAgentConnected }: Setup
                       </button>
 
                       <p style={{ fontSize: 9, color: '#555570', marginTop: 8, textAlign: 'center' }}>
-                        Currently: KVM4 (Qwen 7B) · Future: KVM8 (Qwen 32B)
+                        Currently: KVM4 (Qwen 14B) · Future: KVM8 (Qwen 32B)
                       </p>
                     </div>
 

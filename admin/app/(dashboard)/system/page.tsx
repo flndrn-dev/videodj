@@ -93,7 +93,7 @@ export default function SystemPage() {
   const { health } = useGhostHealth()
   const [systemData, setSystemData] = useState<SystemApiResponse | null>(null)
   const [ollama, setOllama] = useState<OllamaStats>({
-    ollamaStatus: 'running', ollamaModel: 'qwen2.5-coder:7b', ollamaVersion: '0.20.2',
+    ollamaStatus: 'running', ollamaModel: 'qwen2.5-coder:14b', ollamaVersion: '0.20.2',
   })
   const [loading, setLoading] = useState(true)
   const [expandedGauge, setExpandedGauge] = useState<string | null>(null)
