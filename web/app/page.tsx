@@ -241,18 +241,27 @@ export default function Home() {
           console.log(`[restore] ${cloudTracks.length} tracks loaded`)
 
           // Auto-reconnect to persisted folder (restores blob URLs after refresh)
+          console.log('[restore] Checking for persisted folder handle...')
           const folderStatus = await scanManager.checkPersistedFolder()
+          console.log('[restore] Folder status:', folderStatus)
           if (folderStatus === 'granted') {
             // Permission already granted (same browser session) — reconnect silently
+            console.log('[restore] Permission granted — reconnecting...')
             const reconnected = await scanManager.reconnectFolder(cloudTracks)
             if (reconnected) {
+              const withUrls = reconnected.filter(t => t.videoUrl).length
+              console.log(`[restore] Reconnected: ${withUrls}/${reconnected.length} tracks have videoUrl`)
               setLibrary(reconnected)
               buildPlaylist()
-              console.log('[restore] Folder auto-reconnected — tracks playable')
+            } else {
+              console.warn('[restore] reconnectFolder returned null')
             }
           } else if (folderStatus === 'prompt') {
             // Handle exists but needs user click — show reconnect banner
+            console.log('[restore] Needs user gesture — showing banner')
             setShowReconnectBanner(true)
+          } else {
+            console.log('[restore] No persisted folder handle found')
           }
         }
 

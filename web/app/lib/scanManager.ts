@@ -218,7 +218,12 @@ export async function selectFolder(): Promise<boolean> {
       const dir = await (window as any).showDirectoryPicker({ mode: 'read' })
 
       // Persist handle so we can reconnect after page refresh
-      saveDirectoryHandle(dir).catch(() => {})
+      try {
+        await saveDirectoryHandle(dir)
+        console.log('[selectFolder] Directory handle saved to IndexedDB')
+      } catch (err) {
+        console.error('[selectFolder] FAILED to save directory handle:', err)
+      }
 
       state = { scanning: true, phase: 'finding', total: 0, current: 0, count: 0, currentFile: '', startTime: Date.now() }
       notify()
@@ -268,10 +273,13 @@ export function reset() {
 export async function checkPersistedFolder(): Promise<'granted' | 'prompt' | 'none'> {
   try {
     const handle = await loadDirectoryHandle()
+    console.log('[checkPersistedFolder] Handle from IndexedDB:', handle ? `found (${handle.name})` : 'null')
     if (!handle) return 'none'
     const permission = await (handle as any).queryPermission({ mode: 'read' })
+    console.log('[checkPersistedFolder] Permission:', permission)
     return permission === 'granted' ? 'granted' : 'prompt'
-  } catch {
+  } catch (err) {
+    console.error('[checkPersistedFolder] Error:', err)
     return 'none'
   }
 }
