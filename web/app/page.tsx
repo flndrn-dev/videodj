@@ -233,6 +233,18 @@ export default function Home() {
           setLibrary(cloudTracks as Track[])
           buildPlaylist()
           console.log(`[restore] ${cloudTracks.length} tracks loaded`)
+
+          // Auto-reconnect to persisted folder (restores blob URLs after refresh)
+          try {
+            const reconnected = await scanManager.reconnectFolder(cloudTracks)
+            if (reconnected) {
+              setLibrary(reconnected)
+              buildPlaylist()
+              console.log('[restore] Folder reconnected — tracks playable')
+            }
+          } catch (err) {
+            console.warn('[restore] Folder reconnect failed:', err)
+          }
         }
 
         // Fetch playlists from PostgreSQL

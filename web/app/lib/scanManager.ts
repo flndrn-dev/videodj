@@ -8,7 +8,7 @@
  */
 
 import type { Track } from '@/app/hooks/usePlayerStore'
-import { setFileRef } from '@/app/lib/db'
+import { setFileRef, saveDirectoryHandle, loadDirectoryHandle } from '@/app/lib/db'
 import { extractFastMetadata } from '@/app/lib/extractMetadata'
 import { toast } from 'sonner'
 import * as syncEngine from '@/app/lib/syncEngine'
@@ -209,6 +209,9 @@ export async function selectFolder(): Promise<boolean> {
     try {
       const dir = await (window as any).showDirectoryPicker({ mode: 'read' })
 
+      // Persist handle so we can reconnect after page refresh
+      saveDirectoryHandle(dir).catch(() => {})
+
       state = { scanning: true, phase: 'finding', total: 0, current: 0, count: 0, currentFile: '', startTime: Date.now() }
       notify()
 
@@ -244,5 +247,67 @@ export function reset() {
   if (!state.scanning) {
     state = { scanning: false, phase: 'finding', total: 0, current: 0, count: 0, currentFile: '', startTime: 0 }
     notify()
+  }
+}
+
+/**
+ * Reconnect to a previously selected folder after page refresh.
+ * Loads the persisted FileSystemDirectoryHandle from IndexedDB,
+ * verifies permission, re-walks the folder, and matches files
+ * to existing tracks by filename — creating blob URLs for playback.
+ *
+ * Returns tracks with videoUrl attached, or null if reconnect failed.
+ */
+export async function reconnectFolder(existingTracks: Partial<Track>[]): Promise<Track[] | null> {
+  try {
+    const handle = await loadDirectoryHandle()
+    if (!handle) return null
+
+    // Verify we still have permission
+    const permission = await (handle as any).requestPermission({ mode: 'read' })
+    if (permission !== 'granted') {
+      console.log('[reconnectFolder] Permission not granted')
+      return null
+    }
+
+    console.log('[reconnectFolder] Reconnecting to persisted folder...')
+
+    // Walk the folder and collect File objects
+    const files: File[] = []
+    async function walk(dir: FileSystemDirectoryHandle) {
+      for await (const entry of (dir as any).values()) {
+        if (entry.kind === 'file' && VIDEO_EXTENSIONS.test(entry.name)) {
+          files.push(await entry.getFile())
+        } else if (entry.kind === 'directory') {
+          await walk(entry)
+        }
+      }
+    }
+    await walk(handle)
+
+    console.log(`[reconnectFolder] Found ${files.length} files, matching to ${existingTracks.length} tracks`)
+
+    // Match files to existing tracks by filename and create blob URLs
+    let matched = 0
+    const fileMap = new Map<string, File>()
+    for (const file of files) {
+      fileMap.set(file.name.toLowerCase(), file)
+    }
+
+    const reconnected = existingTracks.map(track => {
+      const file = track.file ? fileMap.get(track.file.toLowerCase()) : null
+      if (file) {
+        setFileRef(track.id!, file)
+        matched++
+        return { ...track, videoUrl: URL.createObjectURL(file) } as Track
+      }
+      return track as Track
+    })
+
+    console.log(`[reconnectFolder] Matched ${matched}/${existingTracks.length} tracks to files`)
+    return reconnected
+  } catch (err) {
+    console.warn('[reconnectFolder] Failed:', err)
+    return null
   }
 }

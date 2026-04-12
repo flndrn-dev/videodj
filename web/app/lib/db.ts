@@ -12,7 +12,7 @@
 import type { Track, UserPlaylist } from '@/app/hooks/usePlayerStore'
 
 const DB_NAME = 'videodj-studio'
-const DB_VERSION = 6
+const DB_VERSION = 7
 
 // ---------------------------------------------------------------------------
 // In-memory file reference map — holds File objects for the current session
@@ -65,6 +65,9 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains('countdowns')) {
         db.createObjectStore('countdowns', { keyPath: 'id' })
+      }
+      if (!db.objectStoreNames.contains('directoryHandles')) {
+        db.createObjectStore('directoryHandles')
       }
     }
 
@@ -583,4 +586,41 @@ export async function deleteCountdownVideo(id: string): Promise<void> {
     tx.onerror = () => reject(tx.error)
   })
   db.close()
+}
+
+// ---------------------------------------------------------------------------
+// Directory Handle Persistence (File System Access API)
+// ---------------------------------------------------------------------------
+
+export async function saveDirectoryHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+  try {
+    const db = await openDB()
+    if (!db.objectStoreNames.contains('directoryHandles')) { db.close(); return }
+    const tx = db.transaction('directoryHandles', 'readwrite')
+    tx.objectStore('directoryHandles').put(handle, 'selectedDir')
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    db.close()
+  } catch (err) {
+    console.warn('[db] Failed to save directory handle:', err)
+  }
+}
+
+export async function loadDirectoryHandle(): Promise<FileSystemDirectoryHandle | null> {
+  try {
+    const db = await openDB()
+    if (!db.objectStoreNames.contains('directoryHandles')) { db.close(); return null }
+    const tx = db.transaction('directoryHandles', 'readonly')
+    const handle: FileSystemDirectoryHandle | undefined = await new Promise((resolve, reject) => {
+      const req = tx.objectStore('directoryHandles').get('selectedDir')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    db.close()
+    return handle || null
+  } catch {
+    return null
+  }
 }
