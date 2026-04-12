@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
-import { loadEnv } from '@/app/lib/loadEnv'
+import { loadEnvAsync } from '@/app/lib/loadEnv'
 import { getClientIp, rateLimitResponse, RATE_LIMITS } from '@/app/lib/rateLimit'
 
 // ---------------------------------------------------------------------------
@@ -470,7 +470,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'No text provided' }, { status: 400 })
     }
 
-    const env = loadEnv()
+    const env = await loadEnvAsync()
     const mode = env.AGENT_MODE || 'apikey'
     const provider = env.AGENT_PROVIDER || 'anthropic'
     const apiKey = env.AGENT_API_KEY || env.CLAUDE_API_KEY || ''

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { loadEnv, writeEnv } from '@/app/lib/loadEnv'
+import { loadEnvAsync, writeEnvAsync } from '@/app/lib/loadEnv'
 
-// GET — return current settings
+// GET — return current settings (reads from PostgreSQL → process.env → .env)
 export async function GET() {
-  const env = loadEnv()
+  const env = await loadEnvAsync()
   const apiKey = env.AGENT_API_KEY || env.CLAUDE_API_KEY || ''
   const hasKey = apiKey.length > 10 && apiKey !== 'your-api-key-here'
 
@@ -20,11 +20,11 @@ export async function GET() {
   })
 }
 
-// POST — save settings
+// POST — save settings (writes to PostgreSQL + process.env + .env)
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const env = loadEnv()
+    const env = await loadEnvAsync()
 
     if (body.AGENT_MODE !== undefined) env.AGENT_MODE = body.AGENT_MODE
     if (body.AGENT_PROVIDER !== undefined) env.AGENT_PROVIDER = body.AGENT_PROVIDER
@@ -43,12 +43,7 @@ export async function POST(req: NextRequest) {
     if (body.TWITCH_CLIENT_SECRET !== undefined) env.TWITCH_CLIENT_SECRET = body.TWITCH_CLIENT_SECRET
     if (body.TWITCH_REDIRECT_URI !== undefined) env.TWITCH_REDIRECT_URI = body.TWITCH_REDIRECT_URI
 
-    try {
-      writeEnv(env)
-    } catch (writeErr) {
-      console.warn('[settings] Could not persist .env file:', (writeErr as Error).message)
-      // Non-fatal — continue with the API key test
-    }
+    await writeEnvAsync(env)
 
     // If Twitch credentials, return immediately
     if (body.TWITCH_CLIENT_ID) {
@@ -81,7 +76,6 @@ async function testClaudeCLI(): Promise<{ connected: boolean; error?: string; cl
   const { promisify } = await import('util')
   const exec = promisify(execFile)
 
-  // Find claude binary
   const paths = ['/usr/local/bin/claude', '/opt/homebrew/bin/claude']
   let claudePath = ''
   const fsSync = await import('fs')
@@ -89,7 +83,6 @@ async function testClaudeCLI(): Promise<{ connected: boolean; error?: string; cl
     if (fsSync.existsSync(p)) { claudePath = p; break }
   }
   if (!claudePath) {
-    // Try PATH
     try {
       const { stdout } = await exec('which', ['claude'])
       claudePath = stdout.trim()
@@ -98,15 +91,12 @@ async function testClaudeCLI(): Promise<{ connected: boolean; error?: string; cl
     }
   }
 
-  // Test with a simple prompt
   try {
     const { stdout } = await exec(claudePath, ['--print', '--max-turns', '1'], {
       timeout: 15000,
       env: { ...process.env, CLAUDE_CODE_MAX_TOKENS: '20' },
     })
-    // If we get any output, the CLI is authenticated and working
     if (stdout && stdout.trim().length > 0) {
-      // Get version
       let version = ''
       try {
         const { stdout: vOut } = await exec(claudePath, ['--version'], { timeout: 5000 })
@@ -141,11 +131,9 @@ async function testApiKey(provider: string, apiKey: string, endpoint?: string, m
       return { connected: false, error: (err as Record<string, Record<string, string>>)?.error?.message || `Status ${res.status}` }
     }
 
-    // Ollama — uses its own API, not OpenAI-compatible for validation
     if (provider === 'ollama') {
       const baseUrl = (endpoint || 'http://187.124.64.116:11434').replace(/\/+$/, '')
       try {
-        // Test with /api/tags (list models)
         const tagsRes = await fetch(`${baseUrl}/api/tags`)
         if (!tagsRes.ok) return { connected: false, error: `Ollama unreachable: ${tagsRes.status}` }
         const tags = await tagsRes.json()
@@ -161,7 +149,7 @@ async function testApiKey(provider: string, apiKey: string, endpoint?: string, m
       }
     }
 
-    // OpenAI-compatible providers (OpenAI, xAI, DeepSeek, Google, Custom)
+    // OpenAI-compatible providers
     const endpoints: Record<string, string> = {
       openai: 'https://api.openai.com/v1/chat/completions',
       xai: 'https://api.x.ai/v1/chat/completions',
