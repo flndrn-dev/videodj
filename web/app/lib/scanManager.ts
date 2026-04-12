@@ -189,6 +189,14 @@ export async function processFiles(files: File[]) {
 
   if (onCompleteCallback) onCompleteCallback(merged)
 
+  // ── STEP 4: Background health scan — verify all tracks are playable ──
+  // Runs silently after library is loaded, updates badFile status in PostgreSQL
+  if (merged.length > 0) {
+    setTimeout(() => {
+      runBackgroundHealthScan(merged)
+    }, 2000)
+  }
+
   const skippedCount = duplicateFiles.length
   if (items.length > 0) {
     toast.success(skippedCount > 0 ? `${items.length} new + ${skippedCount} already in library` : `${items.length} videos added`)
@@ -345,6 +353,24 @@ export interface HealthResult {
   healthy: number
   broken: number
   noFile: number
+}
+
+// Callback for UI updates when a track's health status changes
+type HealthUpdateCallback = (trackId: string, badFile: boolean, badReason: string | null) => void
+let healthUpdateCallback: HealthUpdateCallback | null = null
+
+/** Register a callback to receive real-time health scan updates (for UI icon updates) */
+export function onHealthUpdate(fn: HealthUpdateCallback): () => void {
+  healthUpdateCallback = fn
+  return () => { if (healthUpdateCallback === fn) healthUpdateCallback = null }
+}
+
+/** Background health scan — called automatically after folder scan */
+async function runBackgroundHealthScan(tracks: Track[]) {
+  console.log(`[healthScan] Starting background scan of ${tracks.length} tracks...`)
+  await healthScan(tracks, (trackId, badFile, badReason) => {
+    if (healthUpdateCallback) healthUpdateCallback(trackId, badFile, badReason)
+  })
 }
 
 type HealthListener = (progress: { done: number; total: number; current: string; healthy: number; broken: number }) => void

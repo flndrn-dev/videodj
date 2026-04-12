@@ -206,6 +206,11 @@ export default function Home() {
 
   // Production: load library directly from PostgreSQL on mount (no IndexedDB)
   useEffect(() => {
+    // Register health scan callback — updates track icons in real-time
+    const unsubHealth = scanManager.onHealthUpdate((trackId, badFile, badReason) => {
+      updateTrack(trackId, { badFile, badReason: badReason || undefined })
+    })
+
     async function restore() {
       try {
         // Start cloud sync engine first to resolve userId
@@ -335,7 +340,7 @@ export default function Home() {
     }
     restore()
 
-    // No cleanup needed
+    return () => { unsubHealth() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -2056,21 +2061,13 @@ export default function Home() {
         {showSetup && (
           <SetupModal
             onClose={() => setShowSetup(false)}
-            onLibraryLoaded={async tracks => {
+            onLibraryLoaded={tracks => {
               if (tracks.length > 0) {
                 setLibrary(tracks)
                 buildPlaylist()
               }
-              toast.success('Library ready')
-
-              // Auto health scan — test playability of all tracks
-              if (tracks.length > 0) {
-                setTimeout(async () => {
-                  await scanManager.healthScan(tracks, (trackId, badFile, badReason) => {
-                    updateTrack(trackId, { badFile, badReason: badReason || undefined })
-                  })
-                }, 1000)
-              }
+              toast.success('Library ready — health scan starting in background')
+              // Health scan runs automatically from scanManager after processFiles
             }}
             onAgentConnected={() => {
               // Don't close modal — stay on settings, just trigger Linus welcome
