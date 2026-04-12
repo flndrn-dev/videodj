@@ -251,23 +251,46 @@ export function reset() {
 }
 
 /**
- * Reconnect to a previously selected folder after page refresh.
- * Loads the persisted FileSystemDirectoryHandle from IndexedDB,
- * verifies permission, re-walks the folder, and matches files
- * to existing tracks by filename — creating blob URLs for playback.
- *
- * Returns tracks with videoUrl attached, or null if reconnect failed.
+ * Check if a persisted directory handle exists and has permission.
+ * Returns 'granted' | 'prompt' | 'none'
+ * - 'granted': can reconnect silently (same browser session)
+ * - 'prompt': handle exists but needs user click to grant permission
+ * - 'none': no persisted handle
  */
-export async function reconnectFolder(existingTracks: Partial<Track>[]): Promise<Track[] | null> {
+export async function checkPersistedFolder(): Promise<'granted' | 'prompt' | 'none'> {
+  try {
+    const handle = await loadDirectoryHandle()
+    if (!handle) return 'none'
+    const permission = await (handle as any).queryPermission({ mode: 'read' })
+    return permission === 'granted' ? 'granted' : 'prompt'
+  } catch {
+    return 'none'
+  }
+}
+
+/**
+ * Reconnect to a previously selected folder after page refresh.
+ *
+ * @param existingTracks — tracks from PostgreSQL to match files against
+ * @param userGesture — true if called from a user click (can requestPermission)
+ */
+export async function reconnectFolder(existingTracks: Partial<Track>[], userGesture = false): Promise<Track[] | null> {
   try {
     const handle = await loadDirectoryHandle()
     if (!handle) return null
 
-    // Verify we still have permission
-    const permission = await (handle as any).requestPermission({ mode: 'read' })
+    // Check permission — queryPermission doesn't need user gesture
+    let permission = await (handle as any).queryPermission({ mode: 'read' })
+
     if (permission !== 'granted') {
-      console.log('[reconnectFolder] Permission not granted')
-      return null
+      if (userGesture) {
+        // User clicked a button — we can request permission
+        permission = await (handle as any).requestPermission({ mode: 'read' })
+      }
+      if (permission !== 'granted') {
+        console.log('[reconnectFolder] Permission not granted')
+        return null
+      }
     }
 
     console.log('[reconnectFolder] Reconnecting to persisted folder...')
@@ -305,6 +328,7 @@ export async function reconnectFolder(existingTracks: Partial<Track>[]): Promise
     })
 
     console.log(`[reconnectFolder] Matched ${matched}/${existingTracks.length} tracks to files`)
+    if (matched > 0) toast.success(`${matched} tracks reconnected`)
     return reconnected
   } catch (err) {
     console.warn('[reconnectFolder] Failed:', err)

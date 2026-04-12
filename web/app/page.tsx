@@ -51,6 +51,7 @@ export default function Home() {
 
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string; avatar?: string } | null>(null)
   const [showSetup, setShowSetup] = useState(false)
+  const [showReconnectBanner, setShowReconnectBanner] = useState(false)
   const [showPlaylistModal, setShowPlaylistModal] = useState(false)
   const [showStream, setShowStream] = useState(false)
   const [streamMinimized, setStreamMinimized] = useState(false)
@@ -235,15 +236,18 @@ export default function Home() {
           console.log(`[restore] ${cloudTracks.length} tracks loaded`)
 
           // Auto-reconnect to persisted folder (restores blob URLs after refresh)
-          try {
+          const folderStatus = await scanManager.checkPersistedFolder()
+          if (folderStatus === 'granted') {
+            // Permission already granted (same browser session) — reconnect silently
             const reconnected = await scanManager.reconnectFolder(cloudTracks)
             if (reconnected) {
               setLibrary(reconnected)
               buildPlaylist()
-              console.log('[restore] Folder reconnected — tracks playable')
+              console.log('[restore] Folder auto-reconnected — tracks playable')
             }
-          } catch (err) {
-            console.warn('[restore] Folder reconnect failed:', err)
+          } else if (folderStatus === 'prompt') {
+            // Handle exists but needs user click — show reconnect banner
+            setShowReconnectBanner(true)
           }
         }
 
@@ -1890,6 +1894,39 @@ export default function Home() {
           onTimeUpdate={handleDeckBTimeUpdate}
         />
       </div>
+
+      {/* ── Reconnect folder banner ──────────────────────── */}
+      {showReconnectBanner && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+          padding: '8px 16px', background: 'rgba(255,255,0,0.08)',
+          borderTop: '1px solid rgba(255,255,0,0.2)', borderBottom: '1px solid rgba(255,255,0,0.2)',
+        }}>
+          <span style={{ fontSize: 12, color: '#ccc' }}>Your music folder needs reconnecting after refresh</span>
+          <button
+            onClick={async () => {
+              const reconnected = await scanManager.reconnectFolder(library, true)
+              if (reconnected) {
+                setLibrary(reconnected)
+                buildPlaylist()
+              }
+              setShowReconnectBanner(false)
+            }}
+            style={{
+              padding: '5px 16px', borderRadius: 6, fontWeight: 700, fontSize: 11,
+              background: '#ffff00', color: '#000', border: 'none', cursor: 'pointer',
+            }}
+          >
+            Reconnect Folder
+          </button>
+          <button
+            onClick={() => setShowReconnectBanner(false)}
+            style={{ padding: '5px 10px', borderRadius: 6, fontSize: 11, background: 'transparent', border: '1px solid #333', color: '#666', cursor: 'pointer' }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* ── Bottom 40%: Video library / playlist ──────────────────────── */}
       <PlaylistPanel
