@@ -2,211 +2,23 @@
  * syncEngine — background sync orchestrator for videoDJ.Studio
  *
  * Handles:
- * - Upload queue: video files -> MinIO (3 concurrent, priority for live mode)
  * - Metadata sync: track data -> PostgreSQL (batched, write-through)
  * - Conversation sync: Linus summaries -> PostgreSQL
- * - Reconcile: pull cloud state -> merge into IndexedDB on load
+ * - Reconcile: pull PostgreSQL state -> merge into local on load
+ * - Real-time sync: SSE events between tabs/devices
  */
 
 import type { Track } from '@/app/hooks/usePlayerStore'
-import { uploadToCloud, getStreamUrl } from '@/app/lib/cloudStorage'
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type SyncMode = 'setup' | 'active' | 'live'
-
-interface UploadJob {
-  trackId: string
-  file: File
-  userId: string
-  priority: boolean
-  retries: number
-}
-
-interface SyncStatus {
-  uploading: { current: number; total: number; failed: number }
-  syncing: boolean
-  online: boolean
-  mode: SyncMode
-}
-
-type StatusListener = (status: SyncStatus) => void
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
-let mode: SyncMode = 'setup'
 let userId: string | null = null
-
-const uploadQueue: UploadJob[] = []
-let activeUploads = 0
-const MAX_RETRIES = 3
-const listeners: Set<StatusListener> = new Set()
-let totalEnqueued = 0
-let totalFailed = 0
-
-// Upload progress tracking — visible to UI
-let uploadProgress = { active: 0, queued: 0, completed: 0, failed: 0, currentFiles: [] as string[] }
-
-export function getUploadProgress() {
-  return { ...uploadProgress, currentFiles: [...uploadProgress.currentFiles] }
-}
-
-// ---------------------------------------------------------------------------
-// Status
-// ---------------------------------------------------------------------------
-
-function getStatus(): SyncStatus {
-  return {
-    uploading: { current: activeUploads, total: uploadQueue.length + activeUploads, failed: totalFailed },
-    syncing: false,
-    online: typeof navigator !== 'undefined' ? navigator.onLine : true,
-    mode,
-  }
-}
-
-function notify() {
-  const s = getStatus()
-  listeners.forEach(fn => fn(s))
-}
-
-export function onStatusChange(fn: StatusListener): () => void {
-  listeners.add(fn)
-  return () => listeners.delete(fn)
-}
-
-// ---------------------------------------------------------------------------
-// Concurrency
-// ---------------------------------------------------------------------------
-
-function maxConcurrency(): number {
-  return mode === 'live' ? 1 : 3
-}
-
-function hasPrioritySlot(): boolean {
-  return mode === 'live'
-}
-
-// ---------------------------------------------------------------------------
-// Upload Queue
-// ---------------------------------------------------------------------------
-
-function processQueue() {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return
-
-  // Process priority jobs first in live mode
-  if (hasPrioritySlot() && activeUploads < maxConcurrency() + 1) {
-    const priorityIdx = uploadQueue.findIndex(j => j.priority)
-    if (priorityIdx !== -1) {
-      const job = uploadQueue.splice(priorityIdx, 1)[0]
-      runUpload(job)
-    }
-  }
-
-  // Fill remaining slots
-  while (activeUploads < maxConcurrency() && uploadQueue.length > 0) {
-    const job = uploadQueue.shift()!
-    runUpload(job)
-  }
-}
-
-async function runUpload(job: UploadJob) {
-  activeUploads++
-  uploadProgress.active = activeUploads
-  uploadProgress.queued = uploadQueue.length
-  uploadProgress.currentFiles.push(job.file.name)
-  notify()
-
-  try {
-    const { key } = await uploadToCloud(job.file, job.userId, job.trackId)
-
-    // Sync minio_key to PostgreSQL
-    await fetch('/api/tracks', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: job.trackId, minio_key: key }),
-    })
-
-    uploadProgress.completed++
-    uploadProgress.currentFiles = uploadProgress.currentFiles.filter(f => f !== job.file.name)
-    activeTrackIds.delete(job.trackId)
-  } catch (err) {
-    console.error(`[syncEngine] Upload failed for ${job.trackId}:`, err)
-    job.retries++
-    if (job.retries < MAX_RETRIES) {
-      // Backoff: 2s, 5s, 10s
-      const delay = [2000, 5000, 10000][job.retries - 1] || 5000
-      setTimeout(() => {
-        uploadQueue.push(job)
-        processQueue()
-      }, delay)
-    } else {
-      totalFailed++
-      uploadProgress.failed++
-      uploadProgress.currentFiles = uploadProgress.currentFiles.filter(f => f !== job.file.name)
-      activeTrackIds.delete(job.trackId)
-      permanentlyFailed.add(job.trackId)
-      console.warn(`[syncEngine] Upload permanently failed for "${job.file.name}" after ${MAX_RETRIES} retries — skipping`)
-    }
-  } finally {
-    activeUploads--
-    uploadProgress.active = activeUploads
-    uploadProgress.queued = uploadQueue.length
-    notify()
-    processQueue()
-  }
-}
-
-const activeTrackIds = new Set<string>()
-const permanentlyFailed = new Set<string>()
-
-export function enqueueUpload(trackId: string, file: File, priority = false) {
-  if (!userId) {
-    console.warn('[syncEngine] No userId — skipping upload')
-    return
-  }
-  // Skip if already queued, uploading, or permanently failed in this session
-  if (activeTrackIds.has(trackId) || permanentlyFailed.has(trackId) || uploadQueue.some(j => j.trackId === trackId)) {
-    return
-  }
-  activeTrackIds.add(trackId)
-  totalEnqueued++
-  uploadQueue.push({ trackId, file, userId, priority, retries: 0 })
-  notify()
-  processQueue()
-}
 
 // ---------------------------------------------------------------------------
 // Metadata Sync (PostgreSQL)
 // ---------------------------------------------------------------------------
-
-/** Map client Track (camelCase) to PostgreSQL fields (snake_case) */
-function toDbFields(track: Track): Record<string, unknown> {
-  return {
-    title: track.title,
-    artist: track.artist,
-    album: track.album,
-    remixer: track.remixer,
-    genre: track.genre,
-    language: track.language,
-    bpm: track.bpm,
-    key: track.key,
-    released: track.released,
-    duration: track.duration,
-    times_played: track.timesPlayed,
-    file_name: track.file,
-    minio_key: track.minioKey || null,
-    bad_file: track.badFile || false,
-    bad_reason: track.badReason || null,
-    loudness: track.loudness || null,
-    thumbnail_url: track.thumbnail || null,
-    effective_end_time: track.effectiveEndTime || null,
-    effective_start_time: track.effectiveStartTime || null,
-  }
-}
 
 /** Map PostgreSQL row (snake_case) to client Track (camelCase) */
 function fromDbRow(row: Record<string, unknown>): Partial<Track> {
@@ -224,7 +36,6 @@ function fromDbRow(row: Record<string, unknown>): Partial<Track> {
     duration: row.duration as number,
     timesPlayed: row.times_played as number,
     file: row.file_name as string,
-    minioKey: row.minio_key as string | undefined,
     badFile: row.bad_file as boolean,
     badReason: row.bad_reason as string | undefined,
     loudness: row.loudness as number | undefined,
@@ -298,7 +109,6 @@ export async function syncTrackUpdate(trackId: string, updates: Partial<Track>) 
     if (updates.badFile !== undefined) dbUpdates.bad_file = updates.badFile
     if (updates.badReason !== undefined) dbUpdates.bad_reason = updates.badReason
     if (updates.loudness !== undefined) dbUpdates.loudness = updates.loudness
-    if (updates.minioKey !== undefined) dbUpdates.minio_key = updates.minioKey
     if (updates.effectiveStartTime !== undefined) dbUpdates.effective_start_time = updates.effectiveStartTime
     if (updates.effectiveEndTime !== undefined) dbUpdates.effective_end_time = updates.effectiveEndTime
 
@@ -316,7 +126,7 @@ export async function syncTrackUpdate(trackId: string, updates: Partial<Track>) 
 }
 
 // ---------------------------------------------------------------------------
-// Reconcile (pull cloud state into local)
+// Reconcile (pull PostgreSQL state into local)
 // ---------------------------------------------------------------------------
 
 /** Pull tracks from PostgreSQL, merge missing ones into local list */
@@ -337,82 +147,6 @@ export async function reconcile(): Promise<Partial<Track>[]> {
   } catch (err) {
     console.error('[syncEngine] Reconcile error:', err)
     return []
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Video URL Resolution
-// ---------------------------------------------------------------------------
-
-/** Track when each URL was generated (for refresh before expiry) */
-const urlTimestamps = new Map<string, number>()
-const URL_REFRESH_THRESHOLD = 20 * 60 * 60 * 1000 // 20 hours (URLs expire at 24h)
-
-/** For tracks with minioKey but no videoUrl, fetch pre-signed stream URLs in batches */
-export async function resolveVideoUrls(tracks: Track[]): Promise<{ urls: Map<string, string>; failed: string[] }> {
-  const urls = new Map<string, string>()
-  const failed: string[] = []
-  const needUrls = tracks.filter(t => !t.videoUrl && t.minioKey)
-  const BATCH = 20 // Resolve 20 at a time to avoid flooding
-
-  for (let i = 0; i < needUrls.length; i += BATCH) {
-    const batch = needUrls.slice(i, i + BATCH)
-    await Promise.allSettled(batch.map(async track => {
-      try {
-        const url = await getStreamUrl(track.minioKey!)
-        urls.set(track.id, url)
-        urlTimestamps.set(track.id, Date.now())
-      } catch {
-        failed.push(track.id)
-      }
-    }))
-  }
-
-  if (failed.length > 0) {
-    console.warn(`[syncEngine] ${failed.length}/${needUrls.length} tracks failed URL resolution`)
-  }
-
-  return { urls, failed }
-}
-
-/** Refresh pre-signed URLs that are close to expiring (>20h old) */
-export async function refreshExpiredUrls(tracks: Track[]): Promise<Map<string, string>> {
-  const now = Date.now()
-  const expiring = tracks.filter(t => {
-    if (!t.videoUrl || !t.minioKey) return false
-    if (t.videoUrl.startsWith('blob:')) return false // local files never expire
-    const generated = urlTimestamps.get(t.id) || 0
-    return (now - generated) > URL_REFRESH_THRESHOLD
-  })
-  if (expiring.length === 0) return new Map()
-
-  const refreshed = new Map<string, string>()
-  await Promise.allSettled(expiring.map(async track => {
-    try {
-      const url = await getStreamUrl(track.minioKey!)
-      refreshed.set(track.id, url)
-      urlTimestamps.set(track.id, Date.now())
-    } catch {
-      // Keep existing URL — it might still work for a few more hours
-    }
-  }))
-
-  if (refreshed.size > 0) {
-    console.log(`[syncEngine] Refreshed ${refreshed.size} expiring URLs`)
-  }
-  return refreshed
-}
-
-/** Resolve a single track's MinIO URL on-the-fly (for deck loading) */
-export async function resolveTrackUrl(track: Track): Promise<string | null> {
-  if (track.videoUrl) return track.videoUrl
-  if (!track.minioKey) return null
-  try {
-    const url = await getStreamUrl(track.minioKey)
-    urlTimestamps.set(track.id, Date.now())
-    return url
-  } catch {
-    return null
   }
 }
 
@@ -550,11 +284,6 @@ function startSSE() {
 // Lifecycle
 // ---------------------------------------------------------------------------
 
-export function setMode(newMode: SyncMode) {
-  mode = newMode
-  notify()
-}
-
 export async function start(): Promise<string | null> {
   // Resolve current user
   try {
@@ -565,12 +294,6 @@ export async function start(): Promise<string | null> {
   } catch (err) {
     console.error('[syncEngine] start() failed:', err)
     userId = null
-  }
-
-  // Listen for online/offline
-  if (typeof window !== 'undefined') {
-    window.addEventListener('online', () => { notify(); processQueue() })
-    window.addEventListener('offline', () => notify())
   }
 
   // Start SSE for real-time sync

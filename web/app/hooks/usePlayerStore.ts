@@ -28,10 +28,6 @@ export interface Track {
   badReason?: string
   /** RMS loudness (0-1) measured during analysis — used for auto-gain matching */
   loudness?: number
-  /** MinIO storage key — set after upload completes */
-  minioKey?: string
-  /** Upload status: undefined = not started, 'uploading' | 'uploaded' | 'failed' */
-  uploadStatus?: 'uploading' | 'uploaded' | 'failed'
   /** Timestamp (seconds) where music effectively ends (before silence/credits) */
   effectiveEndTime?: number
   /** Timestamp (seconds) where music effectively starts (after silence/intro noise) */

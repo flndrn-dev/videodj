@@ -2,9 +2,10 @@
  * Tracks API — CRUD for track metadata in PostgreSQL
  *
  * GET /api/tracks?userId=xxx — list all tracks for a user
- * POST /api/tracks — create a new track (after file upload to MinIO)
+ * POST /api/tracks — create a new track
  * PUT /api/tracks — update track metadata
- * DELETE /api/tracks?id=xxx — delete track (+ MinIO file)
+ * PATCH /api/tracks — bulk insert tracks (scan results)
+ * DELETE /api/tracks?id=xxx — delete track from database
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
     const {
       id, user_id, title, artist, album, remixer, genre, language,
       bpm, key, released, duration, file_name, file_size,
-      minio_key, thumbnail_url, file_url, loudness, waveform_peaks,
+      thumbnail_url, file_url, loudness, waveform_peaks,
       effective_end_time,
     } = data
 
@@ -77,11 +78,11 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await pool.query(
-      `INSERT INTO tracks (id, user_id, title, artist, album, remixer, genre, language, bpm, key, released, duration, file_name, file_size, minio_key, thumbnail_url, file_url, loudness, waveform_peaks, effective_end_time)
-       VALUES (COALESCE($1, gen_random_uuid()), $2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+      `INSERT INTO tracks (id, user_id, title, artist, album, remixer, genre, language, bpm, key, released, duration, file_name, file_size, thumbnail_url, file_url, loudness, waveform_peaks, effective_end_time)
+       VALUES (COALESCE($1, gen_random_uuid()), $2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
       [trackId, user_id, title, artist || '', album || '', remixer || '', genre || '', language || null,
        bpm || 0, key || '', released || '', duration || 0, file_name || null, file_size || 0,
-       minio_key || null, thumbnail_url || null, file_url || null, loudness || null,
+       thumbnail_url || null, file_url || null, loudness || null,
        waveform_peaks ? JSON.stringify(waveform_peaks) : null, effective_end_time || null]
     )
 
@@ -202,11 +203,9 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   try {
-    // Get minio_key before deleting (for file cleanup)
-    const track = await pool.query('SELECT minio_key FROM tracks WHERE id = $1', [id])
     await pool.query('DELETE FROM tracks WHERE id = $1', [id])
 
-    return NextResponse.json({ success: true, minioKey: track.rows[0]?.minio_key })
+    return NextResponse.json({ success: true })
   } catch (err) {
     console.error('Tracks DELETE error:', err)
     return NextResponse.json({ error: 'Failed to delete track' }, { status: 500 })

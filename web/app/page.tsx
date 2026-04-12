@@ -29,7 +29,7 @@ import { initGhost, destroyGhost } from '@/app/lib/ghost'
 import { initErrorReporter, setUser as setErrorUser } from '@/app/lib/errorReporter'
 import * as syncEngine from '@/app/lib/syncEngine'
 import * as scanManager from '@/app/lib/scanManager'
-// UploadIndicator removed — no MinIO uploads in production
+// UploadIndicator removed — files play from local disk
 // HelpWidget moved into Header component
 
 // ---------------------------------------------------------------------------
@@ -229,7 +229,7 @@ export default function Home() {
         console.log(`[restore] ${cloudTracks.length} tracks loaded from PostgreSQL`)
 
         if (cloudTracks.length > 0) {
-          // Load tracks from PostgreSQL — no MinIO, files play from local disk
+          // Load tracks from PostgreSQL — files play from local disk
           setLibrary(cloudTracks as Track[])
           buildPlaylist()
           console.log(`[restore] ${cloudTracks.length} tracks loaded`)
@@ -319,7 +319,7 @@ export default function Home() {
     }
     restore()
 
-    // No cleanup needed — no MinIO refresh interval
+    // No cleanup needed
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -737,7 +737,7 @@ export default function Home() {
   // ---------------------------------------------------------------------------
 
   const handleOpenFolder = useCallback(async () => {
-    // Delegates to scanManager (PostgreSQL + MinIO production path)
+    // Delegates to scanManager (PostgreSQL production path)
     scanManager.setOnComplete((tracks) => {
       setLibrary(tracks)
       buildPlaylist()

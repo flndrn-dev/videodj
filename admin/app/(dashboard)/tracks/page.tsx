@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Music, Search, CheckCircle, XCircle, AlertTriangle, Trash2, Shield, RefreshCw, Download, Pencil, X, Save, Play, Upload } from 'lucide-react'
+import { Music, Search, CheckCircle, XCircle, AlertTriangle, Trash2, RefreshCw, Pencil, X, Save } from 'lucide-react'
 
 interface TrackRow {
   id: string
@@ -16,7 +16,6 @@ interface TrackRow {
   duration: number
   bad_file: boolean | null
   bad_reason: string | null
-  minio_key: string | null
   file_name: string | null
   times_played: number
   created_at: string
@@ -44,199 +43,22 @@ export default function TracksPage() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [verifying, setVerifying] = useState<Set<string>>(new Set())
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editData, setEditData] = useState<Partial<TrackRow>>({})
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [downloading, setDownloading] = useState(false)
   const [users, setUsers] = useState<{ id: string; email: string; name: string }[]>([])
   const [userFilter, setUserFilter] = useState('')
-  const [recovering, setRecovering] = useState(false)
-  const [testStatus, setTestStatus] = useState<Record<string, 'idle' | 'testing' | 'ok' | 'broken'>>({})
-  const [bulkTesting, setBulkTesting] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0, current: '' })
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [bulkTestProgress, setBulkTestProgress] = useState({ done: 0, total: 0, ok: 0, broken: 0 })
 
   const flagTrackBad = async (trackId: string, bad: boolean, reason?: string) => {
     await fetch('/api/tracks', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: trackId, bad_file: bad, bad_reason: bad ? (reason || 'Failed playability test') : null }),
+      body: JSON.stringify({ id: trackId, bad_file: bad, bad_reason: bad ? (reason || 'Flagged') : null }),
     })
     setTracks(prev => prev.map(t => t.id === trackId
-      ? { ...t, bad_file: bad, bad_reason: bad ? (reason || 'Failed playability test') : null }
+      ? { ...t, bad_file: bad, bad_reason: bad ? (reason || 'Flagged') : null }
       : t
     ))
-  }
-
-  const testTrack = async (trackId: string, minioKey: string) => {
-    setTestStatus(prev => ({ ...prev, [trackId]: 'testing' }))
-    try {
-      const res = await fetch('/api/tracks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'test', minioKey }),
-      })
-      const data = await res.json()
-      if (!data.streamUrl) {
-        setTestStatus(prev => ({ ...prev, [trackId]: 'broken' }))
-        // Only flag as bad if file truly doesn't exist in storage
-        await flagTrackBad(trackId, true, 'File missing from storage')
-        return
-      }
-
-      const video = document.createElement('video')
-      video.crossOrigin = 'anonymous'
-      video.preload = 'metadata'
-
-      const result = await new Promise<'ok' | 'broken'>((resolve) => {
-        const timeout = setTimeout(() => resolve('broken'), 15000) // 15s timeout, not 8s
-        video.onloadedmetadata = () => { clearTimeout(timeout); resolve('ok') }
-        video.onerror = () => { clearTimeout(timeout); resolve('broken') }
-        video.src = data.streamUrl
-      })
-
-      video.src = ''
-      setTestStatus(prev => ({ ...prev, [trackId]: result }))
-
-      // DO NOT auto-flag as bad on timeout — only clear bad flag if test passes
-      if (result === 'ok' && tracks.find(t => t.id === trackId)?.bad_file) {
-        await flagTrackBad(trackId, false)
-      }
-      // Timeout/broken is just a UI indicator, not a permanent DB flag
-    } catch {
-      setTestStatus(prev => ({ ...prev, [trackId]: 'broken' }))
-      // Don't flag in DB — test failure could be network/timeout, not a broken file
-    }
-  }
-
-  const handleBulkTest = async () => {
-    const toTest = tracks.filter(t => selected.has(t.id) && t.minio_key)
-    if (toTest.length === 0) return
-    setBulkTesting(true)
-    setBulkTestProgress({ done: 0, total: toTest.length, ok: 0, broken: 0 })
-
-    // Test 3 at a time for speed
-    const CONCURRENCY = 3
-    let ok = 0, broken = 0, done = 0
-
-    const testOne = async (track: TrackRow) => {
-      setTestStatus(prev => ({ ...prev, [track.id]: 'testing' }))
-      try {
-        const res = await fetch('/api/tracks', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'test', minioKey: track.minio_key }),
-        })
-        const data = await res.json()
-        if (!data.streamUrl) {
-          setTestStatus(prev => ({ ...prev, [track.id]: 'broken' })); broken++
-          await flagTrackBad(track.id, true, 'File missing from storage')
-          done++; setBulkTestProgress({ done, total: toTest.length, ok, broken }); return
-        }
-
-        const video = document.createElement('video')
-        video.crossOrigin = 'anonymous'
-        video.preload = 'metadata'
-        const result = await new Promise<'ok' | 'broken'>((resolve) => {
-          const timeout = setTimeout(() => resolve('broken'), 15000)
-          video.onloadedmetadata = () => { clearTimeout(timeout); resolve('ok') }
-          video.onerror = () => { clearTimeout(timeout); resolve('broken') }
-          video.src = data.streamUrl
-        })
-        video.src = ''
-        setTestStatus(prev => ({ ...prev, [track.id]: result }))
-        if (result === 'ok') {
-          ok++
-          if (track.bad_file) await flagTrackBad(track.id, false)
-        } else {
-          broken++
-          // Don't auto-flag in DB — timeout doesn't mean broken
-        }
-      } catch {
-        setTestStatus(prev => ({ ...prev, [track.id]: 'broken' })); broken++
-        // Don't flag in DB — network errors are not file issues
-      }
-      done++
-      setBulkTestProgress({ done, total: toTest.length, ok, broken })
-    }
-
-    // Process in batches of CONCURRENCY
-    for (let i = 0; i < toTest.length; i += CONCURRENCY) {
-      const batch = toTest.slice(i, i + CONCURRENCY)
-      await Promise.all(batch.map(testOne))
-    }
-
-    setBulkTesting(false)
-  }
-
-  // Upload files from browser to MinIO — matches by filename to existing "No File" tracks
-  const handleUploadFiles = async (fileList: FileList | null) => {
-    if (!fileList || fileList.length === 0) return
-    const files = Array.from(fileList)
-    setUploading(true)
-    setUploadProgress({ done: 0, total: files.length, current: '' })
-
-    // Fetch ALL no-file tracks from the API (not just current page)
-    let noFileTracks: TrackRow[] = []
-    try {
-      const res = await fetch('/api/tracks?page=1&limit=9999&status=no_file')
-      const data = await res.json()
-      noFileTracks = data.tracks || []
-    } catch {
-      noFileTracks = tracks.filter(t => !t.minio_key)
-    }
-
-    let uploaded = 0
-    let skipped = 0
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
-      setUploadProgress({ done: i, total: files.length, current: file.name })
-
-      // Find matching track by filename
-      const match = noFileTracks.find(t => t.file_name?.toLowerCase() === file.name.toLowerCase())
-      if (!match) { skipped++; continue }
-
-      try {
-        const key = `users/${match.user_id}/tracks/${match.id}/${file.name}`
-        const urlRes = await fetch('/api/tracks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'upload_url', key, contentType: file.type || 'video/mp4' }),
-        })
-        const urlData = await urlRes.json()
-        if (!urlData.uploadUrl) { skipped++; continue }
-
-        await new Promise<void>((resolve, reject) => {
-          const xhr = new XMLHttpRequest()
-          xhr.open('PUT', urlData.uploadUrl)
-          xhr.setRequestHeader('Content-Type', file.type || 'video/mp4')
-          xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject()
-          xhr.onerror = () => reject()
-          xhr.send(file)
-        })
-
-        await fetch('/api/tracks', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: match.id, minio_key: key }),
-        })
-
-        setTracks(prev => prev.map(t => t.id === match.id ? { ...t, minio_key: key } : t))
-        uploaded++
-      } catch {
-        skipped++
-      }
-    }
-
-    setUploadProgress({ done: files.length, total: files.length, current: '' })
-    setUploading(false)
-    // Reset file input so user can select again
-    if (fileInputRef.current) fileInputRef.current.value = ''
-    if (uploaded > 0) fetchTracks()
-    alert(`Uploaded: ${uploaded} | Skipped: ${skipped} (no matching track in DB)`)
   }
 
   const toggleSelect = (id: string) => {
@@ -246,28 +68,7 @@ export default function TracksPage() {
     if (selected.size === tracks.length) setSelected(new Set())
     else setSelected(new Set(tracks.map(t => t.id)))
   }
-  const handleBulkDownload = async () => {
-    const toDownload = tracks.filter(t => selected.has(t.id) && t.minio_key)
-    if (toDownload.length === 0) return
-    setDownloading(true)
-    for (const track of toDownload) {
-      try {
-        const res = await fetch('/api/tracks', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'download', minioKey: track.minio_key }),
-        })
-        const data = await res.json()
-        if (data.downloadUrl) {
-          const a = document.createElement('a')
-          a.href = data.downloadUrl
-          a.download = track.file_name || `${track.title}.mp4`
-          a.click()
-          await new Promise(r => setTimeout(r, 500)) // small delay between downloads
-        }
-      } catch { /* skip failed */ }
-    }
-    setDownloading(false)
-  }
+
   const handleBulkDelete = async () => {
     const toDelete = tracks.filter(t => selected.has(t.id))
     if (toDelete.length === 0) return
@@ -300,31 +101,6 @@ export default function TracksPage() {
 
   useEffect(() => { fetchTracks() }, [fetchTracks])
 
-  const handleVerify = async (track: TrackRow) => {
-    if (!track.minio_key) return
-    setVerifying(prev => new Set(prev).add(track.id))
-    try {
-      const res = await fetch('/api/tracks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'verify', id: track.id, minioKey: track.minio_key }),
-      })
-      const data = await res.json()
-      const update = data.exists
-        ? { bad_file: false, bad_reason: null }
-        : { bad_file: true, bad_reason: 'File not found in MinIO' }
-      await fetch('/api/tracks', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: track.id, ...update }),
-      })
-      setTracks(prev => prev.map(t => t.id === track.id ? { ...t, ...update } : t))
-    } catch (e) {
-      console.error('Verify failed:', e)
-    }
-    setVerifying(prev => { const n = new Set(prev); n.delete(track.id); return n })
-  }
-
   const handleAuthorize = async (track: TrackRow) => {
     await fetch('/api/tracks', {
       method: 'PUT',
@@ -335,30 +111,10 @@ export default function TracksPage() {
   }
 
   const handleDelete = async (track: TrackRow) => {
-    if (!confirm(`Delete "${track.title}" by ${track.artist}?\nThis removes it from DB and MinIO permanently.`)) return
+    if (!confirm(`Delete "${track.title}" by ${track.artist}?\nThis removes it from the database permanently.`)) return
     await fetch(`/api/tracks?id=${track.id}`, { method: 'DELETE' })
     setTracks(prev => prev.filter(t => t.id !== track.id))
     setTotal(prev => prev - 1)
-  }
-
-  const handleDownload = async (track: TrackRow) => {
-    if (!track.minio_key) return
-    try {
-      const res = await fetch(`/api/tracks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'download', minioKey: track.minio_key }),
-      })
-      const data = await res.json()
-      if (data.downloadUrl) {
-        const a = document.createElement('a')
-        a.href = data.downloadUrl
-        a.download = track.file_name || `${track.title}.mp4`
-        a.click()
-      }
-    } catch (e) {
-      console.error('Download failed:', e)
-    }
   }
 
   const handleSaveEdit = async (track: TrackRow) => {
@@ -374,11 +130,18 @@ export default function TracksPage() {
 
   const totalPages = Math.ceil(total / 50)
 
+  // Status logic: bad_file → BAD, no file_name → NO FILE, otherwise → OK
+  const getStatus = (track: TrackRow) => {
+    if (track.bad_file) return { label: 'BAD', bg: 'rgba(239,68,68,0.15)', color: '#ef4444' }
+    if (!track.file_name) return { label: 'NO FILE', bg: 'rgba(245,158,11,0.15)', color: '#f59e0b' }
+    return { label: 'OK', bg: 'rgba(74,222,128,0.1)', color: '#4ade80' }
+  }
+
   const statCards = [
     { label: 'Total', value: stats.total, icon: Music, color: '#888', filter: 'all' as const },
     { label: 'Good', value: stats.good, icon: CheckCircle, color: '#4ade80', filter: 'good' as const },
     { label: 'Bad', value: stats.bad, icon: XCircle, color: '#ef4444', filter: 'bad' as const },
-    { label: 'No File', value: stats.no_file, icon: AlertTriangle, color: '#f59e0b', filter: 'no_file' as const },
+    { label: 'No Filename', value: stats.no_file, icon: AlertTriangle, color: '#f59e0b', filter: 'no_file' as const },
   ]
 
   return (
@@ -414,7 +177,7 @@ export default function TracksPage() {
           ))}
         </div>
 
-        {/* Search + filter + refresh — uniform height */}
+        {/* Search + filter + refresh */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'stretch' }}>
           <div style={{ position: 'relative', flex: 1, maxWidth: 400 }}>
             <Search size={14} color="#555" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
@@ -452,58 +215,6 @@ export default function TracksPage() {
           >
             <RefreshCw size={12} /> Refresh
           </button>
-
-          {/* Upload missing files — select video files to upload to MinIO for "No File" tracks */}
-          <input ref={fileInputRef} type="file" accept="video/*" multiple style={{ display: 'none' }}
-            onChange={e => handleUploadFiles(e.target.files)} />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(255,255,0,0.3)', background: 'rgba(255,255,0,0.06)', color: '#ffff00', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, opacity: uploading ? 0.5 : 1 }}
-          >
-            <Upload size={12} /> {uploading ? `Uploading ${uploadProgress.done}/${uploadProgress.total}...` : 'Upload Files'}
-          </button>
-
-          {/* Recover user library — select all files for a user and download */}
-          {userFilter && (
-            <button
-              onClick={async () => {
-                if (!confirm(`Recover full library for this user?\nThis will download ALL their files from MinIO.`)) return
-                setRecovering(true)
-                const allParams = new URLSearchParams({ page: '1', limit: '9999', status: 'all', userId: userFilter })
-                const res = await fetch(`/api/tracks?${allParams}`)
-                const data = await res.json()
-                const withFiles = (data.tracks || []).filter((t: TrackRow) => t.minio_key)
-                for (const track of withFiles) {
-                  try {
-                    const dlRes = await fetch('/api/tracks', {
-                      method: 'POST', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ action: 'download', minioKey: track.minio_key }),
-                    })
-                    const dlData = await dlRes.json()
-                    if (dlData.downloadUrl) {
-                      const a = document.createElement('a')
-                      a.href = dlData.downloadUrl
-                      a.download = track.file_name || `${track.title}.mp4`
-                      a.click()
-                      await new Promise(r => setTimeout(r, 700))
-                    }
-                  } catch { /* skip */ }
-                }
-                setRecovering(false)
-                alert(`Recovery complete — ${withFiles.length} files downloaded.`)
-              }}
-              disabled={recovering}
-              style={{
-                padding: '6px 14px', borderRadius: 8,
-                background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)',
-                color: '#a855f7', cursor: 'pointer', fontSize: 10, fontWeight: 600,
-                display: 'flex', alignItems: 'center', gap: 6, opacity: recovering ? 0.5 : 1,
-              }}
-            >
-              <Download size={12} /> {recovering ? 'Recovering...' : 'Recover Full Library'}
-            </button>
-          )}
         </div>
 
         {/* Bulk action bar */}
@@ -513,22 +224,23 @@ export default function TracksPage() {
             background: 'rgba(255,255,0,0.06)', border: '1px solid rgba(255,255,0,0.15)', borderRadius: 8,
           }}>
             <span style={{ fontSize: 11, color: '#ffff00', fontWeight: 600 }}>{selected.size} selected</span>
-            <button onClick={handleBulkTest} disabled={bulkTesting}
-              style={{ padding: '4px 14px', borderRadius: 6, background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', color: '#a855f7', cursor: 'pointer', fontSize: 10, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, opacity: bulkTesting ? 0.5 : 1 }}>
-              <Play size={12} /> {bulkTesting ? `Testing ${bulkTestProgress.done}/${bulkTestProgress.total}...` : 'Test Playable'}
-            </button>
-            {bulkTesting && (
-              <span style={{ fontSize: 9, color: '#888', fontFamily: 'var(--font-mono)' }}>
-                {bulkTestProgress.ok} ok / {bulkTestProgress.broken} broken
-              </span>
-            )}
-            <button onClick={handleBulkDownload} disabled={downloading}
-              style={{ padding: '4px 14px', borderRadius: 6, background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.3)', color: '#4ade80', cursor: 'pointer', fontSize: 10, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, opacity: downloading ? 0.5 : 1 }}>
-              <Download size={12} /> {downloading ? 'Downloading...' : 'Download Selected'}
-            </button>
             <button onClick={handleBulkDelete}
               style={{ padding: '4px 14px', borderRadius: 6, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', cursor: 'pointer', fontSize: 10, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
               <Trash2 size={12} /> Delete Selected
+            </button>
+            <button onClick={() => {
+              const ids = tracks.filter(t => selected.has(t.id))
+              ids.forEach(t => flagTrackBad(t.id, true, 'Bulk flagged'))
+            }}
+              style={{ padding: '4px 14px', borderRadius: 6, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', cursor: 'pointer', fontSize: 10, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <XCircle size={12} /> Flag Bad
+            </button>
+            <button onClick={() => {
+              const ids = tracks.filter(t => selected.has(t.id))
+              ids.forEach(t => flagTrackBad(t.id, false))
+            }}
+              style={{ padding: '4px 14px', borderRadius: 6, background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)', color: '#4ade80', cursor: 'pointer', fontSize: 10, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <CheckCircle size={12} /> Clear Bad Flag
             </button>
             <button onClick={() => setSelected(new Set())}
               style={{ padding: '4px 10px', borderRadius: 6, background: 'transparent', border: '1px solid #2a2a4e', color: '#888', cursor: 'pointer', fontSize: 10 }}>
@@ -540,7 +252,7 @@ export default function TracksPage() {
         {/* Table */}
         <div style={{ background: '#0d0d1a', border: '1px solid #2a2a4e', borderRadius: 12, overflow: 'hidden' }}>
           <div style={{
-            display: 'grid', gridTemplateColumns: '45px 28px 1fr 120px 80px 55px 55px 50px 70px 220px',
+            display: 'grid', gridTemplateColumns: '45px 28px 1fr 120px 80px 55px 55px 50px 70px 160px',
             padding: '8px 16px', borderBottom: '1px solid #2a2a4e', fontSize: 9,
             color: '#555', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1,
           }}>
@@ -548,7 +260,7 @@ export default function TracksPage() {
             <input type="checkbox" checked={selected.size > 0 && selected.size === tracks.length} onChange={toggleSelectAll}
               style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#ffff00' }} />
             <span>Title / Artist</span>
-            <span>User ID</span>
+            <span>User</span>
             <span>Genre</span>
             <span>BPM</span>
             <span>Key</span>
@@ -561,11 +273,13 @@ export default function TracksPage() {
             <div style={{ padding: 40, textAlign: 'center', color: '#555' }}>Loading...</div>
           ) : tracks.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: '#555' }}>No tracks found</div>
-          ) : tracks.map(track => (
+          ) : tracks.map(track => {
+            const st = getStatus(track)
+            return (
             <div key={track.id}>
               <div
                 style={{
-                  display: 'grid', gridTemplateColumns: '45px 28px 1fr 120px 80px 55px 55px 50px 70px 220px',
+                  display: 'grid', gridTemplateColumns: '45px 28px 1fr 120px 80px 55px 55px 50px 70px 160px',
                   padding: '8px 16px', borderBottom: '1px solid #1a1a2e',
                   alignItems: 'center', fontSize: 11,
                   opacity: track.bad_file ? 0.7 : 1,
@@ -597,10 +311,9 @@ export default function TracksPage() {
                 <div>
                   <span style={{
                     fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
-                    background: track.bad_file ? 'rgba(239,68,68,0.15)' : !track.minio_key ? 'rgba(245,158,11,0.15)' : 'rgba(74,222,128,0.1)',
-                    color: track.bad_file ? '#ef4444' : !track.minio_key ? '#f59e0b' : '#4ade80',
+                    background: st.bg, color: st.color,
                   }}>
-                    {track.bad_file ? 'BAD' : !track.minio_key ? 'NO FILE' : 'OK'}
+                    {st.label}
                   </span>
                   {track.bad_file && track.bad_reason && (
                     <div style={{ fontSize: 8, color: '#ef4444', opacity: 0.7, marginTop: 2, maxWidth: 70, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
@@ -610,40 +323,6 @@ export default function TracksPage() {
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: 3, justifyContent: 'flex-end', flexWrap: 'wrap', alignItems: 'center' }}>
-                  {track.minio_key && (
-                    <>
-                      {/* Play test button — locked once verified as Playable */}
-                      <button
-                        onClick={() => testStatus[track.id] !== 'ok' && testTrack(track.id, track.minio_key!)}
-                        disabled={testStatus[track.id] === 'testing' || testStatus[track.id] === 'ok'}
-                        title={testStatus[track.id] === 'ok' ? 'Verified as playable ✓' : 'Test if file is playable'}
-                        style={{
-                          padding: '3px 8px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 3,
-                          border: testStatus[track.id] === 'ok' ? '1px solid rgba(74,222,128,0.4)' :
-                                 testStatus[track.id] === 'broken' ? '1px solid rgba(239,68,68,0.4)' :
-                                 '1px solid rgba(168,85,247,0.3)',
-                          background: testStatus[track.id] === 'ok' ? 'rgba(74,222,128,0.1)' :
-                                     testStatus[track.id] === 'broken' ? 'rgba(239,68,68,0.1)' :
-                                     'transparent',
-                          color: testStatus[track.id] === 'ok' ? '#4ade80' :
-                                 testStatus[track.id] === 'broken' ? '#ef4444' :
-                                 testStatus[track.id] === 'testing' ? '#a855f7' : '#a855f7',
-                          cursor: testStatus[track.id] === 'ok' ? 'default' : testStatus[track.id] === 'testing' ? 'wait' : 'pointer',
-                          fontSize: 9,
-                          opacity: testStatus[track.id] === 'testing' ? 0.6 : 1,
-                        }}
-                      >
-                        {testStatus[track.id] === 'ok' ? <CheckCircle size={9} /> : <Play size={9} />}
-                        {testStatus[track.id] === 'testing' ? 'Testing...' :
-                         testStatus[track.id] === 'ok' ? 'Playable ✓' :
-                         testStatus[track.id] === 'broken' ? 'Broken' : 'Test'}
-                      </button>
-                      <button onClick={() => handleDownload(track)} title="Download file"
-                        style={{ padding: '3px 6px', borderRadius: 4, border: '1px solid #2a2a4e', background: 'transparent', color: '#888', cursor: 'pointer', fontSize: 9 }}>
-                        <Download size={10} />
-                      </button>
-                    </>
-                  )}
                   <button onClick={() => { setEditingId(editingId === track.id ? null : track.id); setEditData({ title: track.title, artist: track.artist, album: track.album, genre: track.genre, bpm: track.bpm, key: track.key }) }} title="Edit metadata"
                     style={{ padding: '3px 6px', borderRadius: 4, border: '1px solid rgba(255,255,0,0.2)', background: 'transparent', color: '#ffff00', cursor: 'pointer', fontSize: 9 }}>
                     <Pencil size={10} />
@@ -658,7 +337,7 @@ export default function TracksPage() {
                         }}>
                         <CheckCircle size={10} /> Accept
                       </button>
-                      <button onClick={() => handleDelete(track)} title="Remove — delete from DB + MinIO"
+                      <button onClick={() => handleDelete(track)} title="Remove — delete from database"
                         style={{
                           padding: '3px 10px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 4,
                           border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.12)',
@@ -669,7 +348,7 @@ export default function TracksPage() {
                     </>
                   )}
                   {!track.bad_file && (
-                    <button onClick={() => handleDelete(track)} title="Delete from DB + MinIO"
+                    <button onClick={() => handleDelete(track)} title="Delete from database"
                       style={{ padding: '3px 6px', borderRadius: 4, border: '1px solid rgba(239,68,68,0.3)', background: 'transparent', color: '#ef4444', cursor: 'pointer', fontSize: 9 }}>
                       <Trash2 size={10} />
                     </button>
@@ -732,7 +411,7 @@ export default function TracksPage() {
                 )}
               </AnimatePresence>
             </div>
-          ))}
+          )})}
         </div>
 
         {/* Pagination */}

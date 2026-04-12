@@ -161,7 +161,7 @@ export async function processFiles(files: File[]) {
       setFileRef(item.track.id, item.blob)
     }
 
-    // Sync metadata to PostgreSQL — no MinIO upload, files play from local disk
+    // Sync metadata to PostgreSQL — files play from local disk
     if (syncEngine.getUserId()) {
       await syncEngine.syncMetadata(newTracks)
     }

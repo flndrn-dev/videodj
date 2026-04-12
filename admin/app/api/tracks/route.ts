@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { S3Client, HeadObjectCommand, DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 async function getPool() {
   const pg = await import('pg')
@@ -9,18 +7,6 @@ async function getPool() {
     max: 5,
   })
 }
-
-const MINIO_ENDPOINT = process.env.MINIO_ENDPOINT || 'https://s3.videodj.studio'
-const MINIO_ACCESS_KEY = process.env.MINIO_ACCESS_KEY || 'videodj_admin'
-const MINIO_SECRET_KEY = process.env.MINIO_SECRET_KEY || 'v1de0dj_m1n10_s3cure!'
-const MINIO_BUCKET = process.env.MINIO_BUCKET || 'videodj-files'
-
-const s3 = new S3Client({
-  endpoint: MINIO_ENDPOINT,
-  region: 'us-east-1',
-  credentials: { accessKeyId: MINIO_ACCESS_KEY, secretAccessKey: MINIO_SECRET_KEY },
-  forcePathStyle: true,
-})
 
 // GET — list all tracks with pagination and filters
 export async function GET(req: NextRequest) {
@@ -46,8 +32,8 @@ export async function GET(req: NextRequest) {
     }
 
     if (status === 'bad') conditions.push('bad_file = true')
-    else if (status === 'good') conditions.push('(bad_file = false OR bad_file IS NULL) AND minio_key IS NOT NULL')
-    else if (status === 'no_file') conditions.push('minio_key IS NULL')
+    else if (status === 'good') conditions.push('(bad_file = false OR bad_file IS NULL) AND file_name IS NOT NULL')
+    else if (status === 'no_file') conditions.push('file_name IS NULL')
 
     if (search) {
       conditions.push(`(title ILIKE $${idx} OR artist ILIKE $${idx} OR genre ILIKE $${idx})`)
@@ -78,8 +64,8 @@ export async function GET(req: NextRequest) {
       SELECT
         count(*) as total,
         count(*) FILTER (WHERE bad_file = true) as bad,
-        count(*) FILTER (WHERE (bad_file = false OR bad_file IS NULL) AND minio_key IS NOT NULL) as good,
-        count(*) FILTER (WHERE minio_key IS NULL) as no_file
+        count(*) FILTER (WHERE (bad_file = false OR bad_file IS NULL) AND file_name IS NOT NULL) as good,
+        count(*) FILTER (WHERE file_name IS NULL) as no_file
       FROM tracks ${userWhere}
     `, userParams)
 
@@ -126,28 +112,14 @@ export async function PUT(req: NextRequest) {
   }
 }
 
-// DELETE — remove track from DB + MinIO
+// DELETE — remove track from DB
 export async function DELETE(req: NextRequest) {
   const pool = await getPool()
   try {
     const id = req.nextUrl.searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
-    // Get MinIO key before deleting
-    const track = await pool.query('SELECT minio_key FROM tracks WHERE id = $1', [id])
-    const minioKey = track.rows[0]?.minio_key
-
-    // Delete from DB
     await pool.query('DELETE FROM tracks WHERE id = $1', [id])
-
-    // Delete from MinIO if exists
-    if (minioKey) {
-      try {
-        await s3.send(new DeleteObjectCommand({ Bucket: String(MINIO_BUCKET), Key: String(minioKey) }))
-      } catch {
-        console.warn(`Failed to delete MinIO object: ${minioKey}`)
-      }
-    }
 
     return NextResponse.json({ success: true })
   } catch (err) {
@@ -155,45 +127,5 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to delete track' }, { status: 500 })
   } finally {
     await pool.end()
-  }
-}
-
-// POST — verify if MinIO file exists
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json()
-    const { action, id, minioKey, key, contentType } = body
-
-    if (action === 'verify' && minioKey) {
-      try {
-        await s3.send(new HeadObjectCommand({ Bucket: String(MINIO_BUCKET), Key: String(minioKey) }))
-        return NextResponse.json({ exists: true })
-      } catch {
-        return NextResponse.json({ exists: false })
-      }
-    }
-
-    if (action === 'download' && minioKey) {
-      const command = new GetObjectCommand({ Bucket: String(MINIO_BUCKET), Key: String(minioKey) })
-      const downloadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 })
-      return NextResponse.json({ downloadUrl })
-    }
-
-    if (action === 'test' && minioKey) {
-      const command = new GetObjectCommand({ Bucket: String(MINIO_BUCKET), Key: String(minioKey) })
-      const streamUrl = await getSignedUrl(s3, command, { expiresIn: 300 })
-      return NextResponse.json({ streamUrl })
-    }
-
-    if (action === 'upload_url' && key) {
-      const command = new PutObjectCommand({ Bucket: String(MINIO_BUCKET), Key: String(key), ContentType: String(contentType || 'video/mp4') })
-      const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 })
-      return NextResponse.json({ uploadUrl, key })
-    }
-
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
-  } catch (err) {
-    console.error('Admin tracks POST error:', err)
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
   }
 }

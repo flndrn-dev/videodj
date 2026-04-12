@@ -2,8 +2,8 @@
  * Database layer for videoDJ.Studio
  *
  * Hybrid storage:
- * - Metadata: IndexedDB (local cache) + PostgreSQL (cloud, when available)
- * - Video files: In-memory File refs (session) + MinIO (cloud, when available)
+ * - Metadata: IndexedDB (local cache) + PostgreSQL (source of truth)
+ * - Video files: In-memory File refs (session only, re-select folder after refresh)
  * - NO blobs stored in IndexedDB — this was the performance bottleneck
  *
  * The blobs object store is kept for backward compatibility but not used for new saves.
@@ -148,7 +148,6 @@ export async function loadAllTracks(): Promise<Track[]> {
       ...defaults,
       ...meta,
       videoUrl: localUrl || undefined,
-      // minioKey passes through from IndexedDB — videoUrl resolved later by syncEngine
     }
   })
 }

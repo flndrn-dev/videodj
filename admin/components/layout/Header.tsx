@@ -26,7 +26,7 @@ const searchItems = [
   { href: '/system', label: 'System', keywords: 'health infrastructure cpu memory disk postgres ollama' },
   { href: '/users', label: 'Users', keywords: 'accounts invite roles admin subscriber beta' },
   { href: '/support', label: 'Support', keywords: 'tickets help messages customer' },
-  { href: '/tracks', label: 'Tracks', keywords: 'library music songs database minio verify' },
+  { href: '/tracks', label: 'Tracks', keywords: 'library music songs database metadata' },
   { href: '/devzone', label: 'Dev Zone', keywords: 'ideas kanban roadmap board development' },
   { href: '/finance', label: 'Finance', keywords: 'revenue billing subscriptions payments mrr' },
   { href: '/subscribers', label: 'Subscribers', keywords: 'email newsletter early access trial subscribers' },

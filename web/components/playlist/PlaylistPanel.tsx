@@ -8,7 +8,7 @@ import { SquarePenIcon } from '@/components/ui/square-pen'
 import { CheckIcon } from '@/components/ui/check'
 import { SearchIcon } from '@/components/ui/search'
 import { XIcon } from '@/components/ui/x'
-import { Trash2, Music, ListMusic, Plus, User, Database, ChevronDown, PanelRightOpen, PanelRightClose, Cloud, CloudOff } from 'lucide-react'
+import { Trash2, Music, ListMusic, Plus, User, Database, ChevronDown, PanelRightOpen, PanelRightClose } from 'lucide-react'
 import type { Track, UserPlaylist } from '@/app/hooks/usePlayerStore'
 import { formatTime } from '@/app/hooks/usePlayerStore'
 
@@ -286,23 +286,6 @@ const TrackRow = memo(function TrackRow({
         textAlign: 'center', marginRight: 10,
       }}>
         {track.timesPlayed || 0}
-      </span>
-
-      {/* Cloud Status */}
-      <span
-        className="col-cloud"
-        title={track.minioKey ? 'Backed up to cloud' : track.uploadStatus === 'uploading' ? 'Uploading...' : track.uploadStatus === 'failed' ? 'Upload failed' : 'Pending upload'}
-        style={{ width: 20, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      >
-        {track.minioKey ? (
-          <Cloud size={12} color="#4ade80" />
-        ) : track.uploadStatus === 'uploading' ? (
-          <Cloud size={12} color="#ffff00" style={{ animation: 'spin 1.5s linear infinite' }} />
-        ) : track.uploadStatus === 'failed' ? (
-          <CloudOff size={12} color="#ef4444" />
-        ) : (
-          <Cloud size={12} color="#333348" />
-        )}
       </span>
 
       {/* Edit/Save + Delete */}
