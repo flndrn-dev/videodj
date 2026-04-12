@@ -117,8 +117,8 @@ export async function processFiles(files: File[]) {
 
   const items: { track: Track; blob: File }[] = []
 
-  // Process 8 at a time — tag reading is lightweight
-  const SCAN_BATCH = 8
+  // Process 50 at a time — tag reading is instant, no video element overhead
+  const SCAN_BATCH = 50
 
   for (let i = 0; i < newFiles.length; i += SCAN_BATCH) {
     const batch = newFiles.slice(i, i + SCAN_BATCH)

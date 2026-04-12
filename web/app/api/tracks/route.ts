@@ -125,6 +125,76 @@ export async function PUT(req: NextRequest) {
   }
 }
 
+// PATCH — bulk insert tracks (for scan results)
+export async function PATCH(req: NextRequest) {
+  try {
+    const { tracks: trackData, userId } = await req.json()
+    if (!Array.isArray(trackData) || !userId) {
+      return NextResponse.json({ error: 'tracks array and userId required' }, { status: 400 })
+    }
+
+    if (trackData.length === 0) {
+      return NextResponse.json({ inserted: 0, skipped: 0, total: 0 })
+    }
+
+    let inserted = 0
+    let skipped = 0
+    const BATCH = 50
+
+    for (let i = 0; i < trackData.length; i += BATCH) {
+      const batch = trackData.slice(i, i + BATCH)
+      const fileNames = batch.map((t: any) => t.file_name || t.file).filter(Boolean)
+
+      // Check which already exist
+      const existing = await pool.query(
+        'SELECT file_name FROM tracks WHERE user_id = $1 AND file_name = ANY($2)',
+        [userId, fileNames]
+      )
+      const existingNames = new Set((existing.rows as { file_name: string }[]).map(r => r.file_name?.toLowerCase()))
+
+      // Filter to only new tracks
+      const newTracks = batch.filter((t: any) => {
+        const fn = (t.file_name || t.file || '').toLowerCase()
+        return fn && !existingNames.has(fn)
+      })
+
+      if (newTracks.length === 0) {
+        skipped += batch.length
+        continue
+      }
+
+      // Bulk insert new tracks
+      const values: unknown[] = []
+      const placeholders: string[] = []
+      let idx = 1
+      for (const t of newTracks) {
+        placeholders.push(`(COALESCE($${idx}, gen_random_uuid()), $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4}, $${idx + 5}, $${idx + 6}, $${idx + 7}, $${idx + 8}, $${idx + 9}, $${idx + 10}, $${idx + 11}, $${idx + 12})`)
+        values.push(
+          t.id || null, userId, t.title || '', t.artist || '', t.album || '',
+          t.genre || '', t.language || null, t.bpm || 0, t.key || '',
+          t.duration || 0, t.file_name || t.file || null, t.thumbnail || null,
+          t.released || ''
+        )
+        idx += 13
+      }
+
+      await pool.query(
+        `INSERT INTO tracks (id, user_id, title, artist, album, genre, language, bpm, key, duration, file_name, thumbnail_url, released)
+         VALUES ${placeholders.join(',')}`,
+        values
+      )
+
+      inserted += newTracks.length
+      skipped += batch.length - newTracks.length
+    }
+
+    return NextResponse.json({ inserted, skipped, total: trackData.length })
+  } catch (err) {
+    console.error('Tracks PATCH (bulk) error:', err)
+    return NextResponse.json({ error: String((err as Error).message) }, { status: 500 })
+  }
+}
+
 export async function DELETE(req: NextRequest) {
   // no rate limit — internal API
 

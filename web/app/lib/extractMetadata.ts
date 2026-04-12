@@ -423,17 +423,14 @@ async function detectEffectiveEnd(file: File): Promise<number | null> {
 // Fast extraction — tags + video element only. No audio decode.
 // ---------------------------------------------------------------------------
 
-/** Fast extraction — reads ID3/Vorbis tags + video element for duration/thumbnail.
- *  No audio decode. Returns in < 1 second per file. */
+/** Fast extraction — tags ONLY. No video element, no thumbnail.
+ *  Completes in <100ms per file for fast bulk scanning. */
 export async function extractFastMetadata(file: File): Promise<VideoMeta> {
-  const [tags, videoInfo] = await Promise.all([
-    extractTags(file),
-    extractFromVideoElement(file),
-  ])
+  const tags = await extractTags(file)
 
   return {
-    duration: tags.duration || videoInfo.duration,
-    thumbnail: videoInfo.thumbnail,
+    duration: tags.duration || 0,
+    thumbnail: '', // skip thumbnail during scan — too slow for 1600+ files
     bpm: tags.bpm || 0,
     key: tags.key || '',
     artist: tags.artist || '',

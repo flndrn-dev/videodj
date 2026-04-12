@@ -234,51 +234,48 @@ function fromDbRow(row: Record<string, unknown>): Partial<Track> {
   }
 }
 
-/** Sync tracks to PostgreSQL — sequential small batches to avoid rate limits. */
+/** Sync tracks to PostgreSQL — single bulk insert, not one-at-a-time. */
 export async function syncMetadata(tracks: Track[]) {
   if (!userId) {
     console.warn('[syncEngine] syncMetadata skipped — no userId')
     return
   }
-  const BATCH = 10 // Small batches to avoid rate limiting
-  let saved = 0
-  let failed = 0
 
-  for (let i = 0; i < tracks.length; i += BATCH) {
-    const batch = tracks.slice(i, i + BATCH)
-    // Process batch sequentially — one at a time within each batch
-    for (const track of batch) {
-      try {
-        const res = await fetch('/api/tracks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ id: track.id, user_id: userId, ...toDbFields(track) }),
-        })
-        if (res.status === 409) {
-          await fetch('/api/tracks', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({ id: track.id, ...toDbFields(track) }),
-          })
-          saved++
-        } else if (res.ok) {
-          saved++
-        } else {
-          failed++
-          if (failed <= 3) console.warn('[syncEngine] Track save failed:', res.status, track.title)
-        }
-      } catch {
-        failed++
-      }
+  console.log(`[syncEngine] Bulk saving ${tracks.length} tracks to PostgreSQL...`)
+
+  try {
+    const trackData = tracks.map(t => ({
+      id: t.id,
+      title: t.title,
+      artist: t.artist,
+      album: t.album,
+      genre: t.genre,
+      language: t.language,
+      bpm: t.bpm,
+      key: t.key,
+      released: t.released,
+      duration: t.duration,
+      file_name: t.file,
+      thumbnail: t.thumbnail,
+    }))
+
+    const res = await fetch('/api/tracks', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ tracks: trackData, userId }),
+    })
+
+    if (res.ok) {
+      const data = await res.json()
+      console.log(`[syncEngine] Bulk save complete: ${data.inserted} inserted, ${data.skipped} skipped`)
+    } else {
+      const err = await res.text()
+      console.error('[syncEngine] Bulk save failed:', res.status, err)
     }
-    if ((i + BATCH) % 100 === 0 || i + BATCH >= tracks.length) {
-      console.log(`[syncEngine] Metadata sync progress: ${Math.min(i + BATCH, tracks.length)}/${tracks.length} (${saved} saved, ${failed} failed)`)
-    }
+  } catch (err) {
+    console.error('[syncEngine] Bulk save error:', err)
   }
-  console.log(`[syncEngine] Metadata sync complete: ${saved} saved, ${failed} failed out of ${tracks.length}`)
-
 
   notifySync('tracks')
 }
