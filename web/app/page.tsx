@@ -235,33 +235,66 @@ export default function Home() {
         console.log(`[restore] ${cloudTracks.length} tracks loaded from PostgreSQL`)
 
         if (cloudTracks.length > 0) {
-          // Load tracks from PostgreSQL — files play from local disk
           setLibrary(cloudTracks as Track[])
           buildPlaylist()
-          console.log(`[restore] ${cloudTracks.length} tracks loaded`)
 
           // Auto-reconnect to persisted folder (restores blob URLs after refresh)
-          console.log('[restore] Checking for persisted folder handle...')
-          const folderStatus = await scanManager.checkPersistedFolder()
-          console.log('[restore] Folder status:', folderStatus)
-          if (folderStatus === 'granted') {
-            // Permission already granted (same browser session) — reconnect silently
-            console.log('[restore] Permission granted — reconnecting...')
-            const reconnected = await scanManager.reconnectFolder(cloudTracks)
-            if (reconnected) {
-              const withUrls = reconnected.filter(t => t.videoUrl).length
-              console.log(`[restore] Reconnected: ${withUrls}/${reconnected.length} tracks have videoUrl`)
-              setLibrary(reconnected)
-              buildPlaylist()
-            } else {
-              console.warn('[restore] reconnectFolder returned null')
+          try {
+            const { loadDirectoryHandle } = await import('@/app/lib/db')
+            const handle = await loadDirectoryHandle()
+            console.log('[restore] Persisted handle:', handle ? handle.name : 'none')
+
+            if (handle) {
+              // Check if we already have permission (same browser session = instant)
+              let permission = await (handle as any).queryPermission({ mode: 'read' })
+              console.log('[restore] Permission:', permission)
+
+              if (permission === 'granted') {
+                // Walk folder and match files to tracks
+                const files: File[] = []
+                const VIDEO_EXT = /\.(mp4|mkv|avi|mov|webm|m4v)$/i
+                async function walk(dir: FileSystemDirectoryHandle) {
+                  for await (const entry of (dir as any).values()) {
+                    if (entry.kind === 'file' && VIDEO_EXT.test(entry.name)) {
+                      files.push(await entry.getFile())
+                    } else if (entry.kind === 'directory') {
+                      await walk(entry)
+                    }
+                  }
+                }
+                await walk(handle)
+                console.log(`[restore] Found ${files.length} files in folder`)
+
+                // Match by filename
+                const { setFileRef } = await import('@/app/lib/db')
+                const fileMap = new Map<string, File>()
+                for (const f of files) fileMap.set(f.name.toLowerCase(), f)
+
+                let matched = 0
+                const reconnected = (cloudTracks as Track[]).map(track => {
+                  const file = track.file ? fileMap.get(track.file.toLowerCase()) : null
+                  if (file) {
+                    setFileRef(track.id, file)
+                    matched++
+                    return { ...track, videoUrl: URL.createObjectURL(file) }
+                  }
+                  return track
+                })
+
+                console.log(`[restore] Matched ${matched}/${cloudTracks.length} tracks`)
+                if (matched > 0) {
+                  setLibrary(reconnected as Track[])
+                  buildPlaylist()
+                  toast.success(`${matched} tracks reconnected`)
+                }
+              } else {
+                // Need user click — show banner
+                console.log('[restore] Permission needs gesture — showing banner')
+                setShowReconnectBanner(true)
+              }
             }
-          } else if (folderStatus === 'prompt') {
-            // Handle exists but needs user click — show reconnect banner
-            console.log('[restore] Needs user gesture — showing banner')
-            setShowReconnectBanner(true)
-          } else {
-            console.log('[restore] No persisted folder handle found')
+          } catch (err) {
+            console.error('[restore] Folder reconnect error:', err)
           }
         }
 
