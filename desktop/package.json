@@ -67,7 +67,7 @@
         }
       ],
       "hardenedRuntime": false,
-      "identity": null
+      "identity": "-"
     },
     "win": {
       "icon": "resources/icon.svg",

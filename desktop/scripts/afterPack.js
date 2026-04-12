@@ -1,5 +1,6 @@
 const { execSync } = require('child_process')
 const path = require('path')
+const fs = require('fs')
 
 exports.default = async function(context) {
   // Only run on macOS
@@ -8,17 +9,30 @@ exports.default = async function(context) {
   const appPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
   console.log(`[afterPack] Fixing macOS app: ${appPath}`)
 
-  try {
-    // 1. Strip quarantine and extended attributes
-    execSync(`xattr -cr "${appPath}"`, { stdio: 'inherit' })
-    console.log('[afterPack] Extended attributes stripped')
+  if (!fs.existsSync(appPath)) {
+    console.error(`[afterPack] App not found at: ${appPath}`)
+    return
+  }
 
-    // 2. Ad-hoc code sign (no Apple Developer ID needed)
-    // This prevents the "app is damaged" error on macOS
+  try {
+    // 1. Strip ALL extended attributes (quarantine, etc.)
+    console.log('[afterPack] Stripping extended attributes...')
+    execSync(`xattr -cr "${appPath}"`, { stdio: 'inherit' })
+
+    // 2. Ad-hoc code sign — signs the app without Apple Developer ID
+    // --force: replace any existing signature
+    // --deep: sign all nested frameworks and binaries
+    // --sign -: ad-hoc signature (no certificate needed)
+    console.log('[afterPack] Ad-hoc code signing...')
     execSync(`codesign --force --deep --sign - "${appPath}"`, { stdio: 'inherit' })
-    console.log('[afterPack] Ad-hoc code signed successfully')
+
+    // 3. Verify the signature is valid
+    console.log('[afterPack] Verifying signature...')
+    execSync(`codesign --verify --deep --strict "${appPath}"`, { stdio: 'inherit' })
+    console.log('[afterPack] Code signature verified OK')
   } catch (err) {
-    console.warn('[afterPack] Warning:', err.message)
-    // Non-fatal — app may still work with manual bypass
+    // Make this FATAL so we know if signing fails
+    console.error('[afterPack] CODE SIGNING FAILED:', err.message)
+    throw err
   }
 }
