@@ -52,6 +52,8 @@ export default function Home() {
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string; avatar?: string } | null>(null)
   const [showSetup, setShowSetup] = useState(false)
   const [showReconnectBanner, setShowReconnectBanner] = useState(false)
+  const [filesConnected, setFilesConnected] = useState(false)
+  const reconnectInputRef = useRef<HTMLInputElement>(null)
   const [showPlaylistModal, setShowPlaylistModal] = useState(false)
   const [showStream, setShowStream] = useState(false)
   const [streamMinimized, setStreamMinimized] = useState(false)
@@ -238,63 +240,43 @@ export default function Home() {
           setLibrary(cloudTracks as Track[])
           buildPlaylist()
 
-          // Auto-reconnect to persisted folder (restores blob URLs after refresh)
+          // Try silent auto-reconnect (Chrome same session only)
+          let autoConnected = false
           try {
-            const { loadDirectoryHandle } = await import('@/app/lib/db')
+            const { loadDirectoryHandle, setFileRef } = await import('@/app/lib/db')
             const handle = await loadDirectoryHandle()
-            console.log('[restore] Persisted handle:', handle ? handle.name : 'none')
-
             if (handle) {
-              // Check if we already have permission (same browser session = instant)
-              let permission = await (handle as any).queryPermission({ mode: 'read' })
-              console.log('[restore] Permission:', permission)
-
+              const permission = await (handle as any).queryPermission({ mode: 'read' })
               if (permission === 'granted') {
-                // Walk folder and match files to tracks
                 const files: File[] = []
                 const VIDEO_EXT = /\.(mp4|mkv|avi|mov|webm|m4v)$/i
                 async function walk(dir: FileSystemDirectoryHandle) {
                   for await (const entry of (dir as any).values()) {
-                    if (entry.kind === 'file' && VIDEO_EXT.test(entry.name)) {
-                      files.push(await entry.getFile())
-                    } else if (entry.kind === 'directory') {
-                      await walk(entry)
-                    }
+                    if (entry.kind === 'file' && VIDEO_EXT.test(entry.name)) files.push(await entry.getFile())
+                    else if (entry.kind === 'directory') await walk(entry)
                   }
                 }
                 await walk(handle)
-                console.log(`[restore] Found ${files.length} files in folder`)
-
-                // Match by filename
-                const { setFileRef } = await import('@/app/lib/db')
                 const fileMap = new Map<string, File>()
                 for (const f of files) fileMap.set(f.name.toLowerCase(), f)
-
                 let matched = 0
                 const reconnected = (cloudTracks as Track[]).map(track => {
                   const file = track.file ? fileMap.get(track.file.toLowerCase()) : null
-                  if (file) {
-                    setFileRef(track.id, file)
-                    matched++
-                    return { ...track, videoUrl: URL.createObjectURL(file) }
-                  }
+                  if (file) { setFileRef(track.id, file); matched++; return { ...track, videoUrl: URL.createObjectURL(file) } }
                   return track
                 })
-
-                console.log(`[restore] Matched ${matched}/${cloudTracks.length} tracks`)
                 if (matched > 0) {
-                  setLibrary(reconnected as Track[])
-                  buildPlaylist()
+                  setLibrary(reconnected as Track[]); buildPlaylist()
+                  setFilesConnected(true); autoConnected = true
                   toast.success(`${matched} tracks reconnected`)
                 }
-              } else {
-                // Need user click — show banner
-                console.log('[restore] Permission needs gesture — showing banner')
-                setShowReconnectBanner(true)
               }
             }
-          } catch (err) {
-            console.error('[restore] Folder reconnect error:', err)
+          } catch { /* silent fail — banner will show */ }
+
+          // If auto-reconnect didn't work, show the connect banner
+          if (!autoConnected) {
+            setShowReconnectBanner(true)
           }
         }
 
@@ -391,7 +373,8 @@ export default function Home() {
     // Check if track has a playable URL (local file reference)
     let resolvedTrack = track
     if (!track.videoUrl && !track.badFile) {
-      toast.error(`Can't play "${track.title}" — open your music folder first (Settings → Library)`)
+      setShowReconnectBanner(true)
+      toast.error('Connect your music folder to play tracks')
       return
     }
 
@@ -799,15 +782,49 @@ export default function Home() {
   // Folder picker (used by bottom panel)
   // ---------------------------------------------------------------------------
 
+  // Quick-connect: match files to existing tracks by filename — no metadata re-scan
+  const quickConnectFiles = useCallback(async (files: File[]) => {
+    const { setFileRef } = await import('@/app/lib/db')
+    const VIDEO_EXT = /\.(mp4|mkv|avi|mov|webm|m4v)$/i
+    const videoFiles = files.filter(f => VIDEO_EXT.test(f.name))
+
+    const currentLib = usePlayerStore.getState().library
+    const fileMap = new Map<string, File>()
+    for (const f of videoFiles) fileMap.set(f.name.toLowerCase(), f)
+
+    let matched = 0
+    const connected = currentLib.map(track => {
+      const file = track.file ? fileMap.get(track.file.toLowerCase()) : null
+      if (file) {
+        setFileRef(track.id, file)
+        matched++
+        return { ...track, videoUrl: URL.createObjectURL(file) }
+      }
+      return track
+    })
+
+    if (matched > 0) {
+      setLibrary(connected as Track[])
+      buildPlaylist()
+      setFilesConnected(true)
+      setShowReconnectBanner(false)
+      toast.success(`${matched} tracks connected`)
+    } else {
+      toast.error('No matching files found — make sure you selected the right folder')
+    }
+  }, [setLibrary, buildPlaylist])
+
   const handleOpenFolder = useCallback(async () => {
-    // Delegates to scanManager (PostgreSQL production path)
     scanManager.setOnComplete((tracks) => {
       setLibrary(tracks)
       buildPlaylist()
+      setFilesConnected(true)
+      setShowReconnectBanner(false)
     })
     const handled = await scanManager.selectFolder()
     if (!handled) {
-      toast.error('Folder picker not supported in this browser')
+      // Safari / Firefox fallback — use file input
+      reconnectInputRef.current?.click()
     }
   }, [setLibrary, buildPlaylist])
 
@@ -1943,34 +1960,33 @@ export default function Home() {
       </div>
 
       {/* ── Reconnect folder banner ──────────────────────── */}
-      {showReconnectBanner && (
+      {/* Hidden file input for cross-browser folder selection */}
+      <input
+        ref={reconnectInputRef}
+        type="file"
+        // @ts-expect-error webkitdirectory is non-standard but works in all major browsers
+        webkitdirectory=""
+        multiple
+        style={{ display: 'none' }}
+        accept="video/*"
+        onChange={e => e.target.files && quickConnectFiles(Array.from(e.target.files))}
+      />
+
+      {showReconnectBanner && !filesConnected && (
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
-          padding: '8px 16px', background: 'rgba(255,255,0,0.08)',
-          borderTop: '1px solid rgba(255,255,0,0.2)', borderBottom: '1px solid rgba(255,255,0,0.2)',
+          padding: '10px 16px', background: 'rgba(255,255,0,0.1)',
+          borderTop: '2px solid rgba(255,255,0,0.3)', borderBottom: '2px solid rgba(255,255,0,0.3)',
         }}>
-          <span style={{ fontSize: 12, color: '#ccc' }}>Your music folder needs reconnecting after refresh</span>
+          <span style={{ fontSize: 13, color: '#fff', fontWeight: 600 }}>Select your music folder to play tracks</span>
           <button
-            onClick={async () => {
-              const reconnected = await scanManager.reconnectFolder(library, true)
-              if (reconnected) {
-                setLibrary(reconnected)
-                buildPlaylist()
-              }
-              setShowReconnectBanner(false)
-            }}
+            onClick={() => handleOpenFolder()}
             style={{
-              padding: '5px 16px', borderRadius: 6, fontWeight: 700, fontSize: 11,
+              padding: '7px 20px', borderRadius: 8, fontWeight: 700, fontSize: 12,
               background: '#ffff00', color: '#000', border: 'none', cursor: 'pointer',
             }}
           >
-            Reconnect Folder
-          </button>
-          <button
-            onClick={() => setShowReconnectBanner(false)}
-            style={{ padding: '5px 10px', borderRadius: 6, fontSize: 11, background: 'transparent', border: '1px solid #333', color: '#666', cursor: 'pointer' }}
-          >
-            Dismiss
+            Connect Music Folder
           </button>
         </div>
       )}
