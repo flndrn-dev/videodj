@@ -8,7 +8,8 @@ import { SquarePenIcon } from '@/components/ui/square-pen'
 import { CheckIcon } from '@/components/ui/check'
 import { SearchIcon } from '@/components/ui/search'
 import { XIcon } from '@/components/ui/x'
-import { Trash2, Music, ListMusic, Plus, User, Database, ChevronDown, PanelRightOpen, PanelRightClose, CircleCheck, CloudOff } from 'lucide-react'
+import { Trash2, Music, ListMusic, Plus, User, Database, ChevronDown, PanelRightOpen, PanelRightClose, CircleCheck, CloudOff, Play } from 'lucide-react'
+import { testSingleTrack } from '@/app/lib/scanManager'
 import type { Track, UserPlaylist } from '@/app/hooks/usePlayerStore'
 import { formatTime } from '@/app/hooks/usePlayerStore'
 
@@ -289,11 +290,31 @@ const TrackRow = memo(function TrackRow({
       </span>
 
       {/* Health status */}
-      <span title={track.badFile ? (track.badReason || 'Bad file') : 'Healthy'} style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginRight: 4 }}>
-        {track.badFile
-          ? <CloudOff size={14} color="#ef4444" />
-          : <CircleCheck size={14} color="#4ade80" />
-        }
+      <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginRight: 4, gap: 2 }}>
+        {track.badFile ? (
+          <>
+            <button
+              title="Click to mark as healthy"
+              onClick={(e) => { e.stopPropagation(); onUpdateTrack(track.id, { badFile: false, badReason: undefined }) }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}
+            >
+              <CloudOff size={14} color="#ef4444" />
+            </button>
+            <button
+              title="Test play — verify file works"
+              onClick={async (e) => {
+                e.stopPropagation()
+                const ok = await testSingleTrack(track)
+                if (ok) onUpdateTrack(track.id, { badFile: false, badReason: undefined })
+              }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}
+            >
+              <Play size={12} color="#f59e0b" />
+            </button>
+          </>
+        ) : (
+          <CircleCheck size={14} color="#4ade80" />
+        )}
       </span>
 
       {/* Edit/Save + Delete */}

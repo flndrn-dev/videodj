@@ -391,11 +391,8 @@ export function onHealthProgress(fn: HealthListener): () => void {
 
 /**
  * Test each track by loading into a hidden video element.
- * Flags broken tracks as bad_file=true in PostgreSQL.
+ * Only flags as broken on actual errors — timeouts get benefit of the doubt.
  * Clears bad_file flag for tracks that pass.
- *
- * @param tracks — library tracks to test (must have videoUrl or fileRef)
- * @param onUpdate — called for each track result to update UI
  */
 export async function healthScan(
   tracks: Track[],
@@ -403,61 +400,53 @@ export async function healthScan(
 ): Promise<HealthResult> {
   const result: HealthResult = { total: tracks.length, healthy: 0, broken: 0, noFile: 0 }
 
-  // Only test tracks that have file refs (blob URLs)
   const testable = tracks.filter(t => t.videoUrl || getFileRef(t.id))
-  const untestable = tracks.length - testable.length
-  result.noFile = untestable
+  result.noFile = tracks.length - testable.length
 
-  console.log(`[healthScan] Testing ${testable.length} tracks (${untestable} without file refs)`)
+  console.log(`[healthScan] Testing ${testable.length} tracks`)
   toast.info(`Health scan: testing ${testable.length} tracks...`)
 
-  // Test 3 at a time for speed
   const CONCURRENCY = 3
   let done = 0
 
   async function testOne(track: Track): Promise<void> {
     const videoUrl = track.videoUrl || (getFileRef(track.id) ? URL.createObjectURL(getFileRef(track.id)!) : null)
-    if (!videoUrl) {
-      result.noFile++
-      done++
-      return
-    }
+    if (!videoUrl) { result.noFile++; done++; return }
 
     try {
-      const status = await new Promise<'ok' | 'broken'>((resolve) => {
+      const status = await new Promise<'ok' | 'broken' | 'timeout'>((resolve) => {
         const vid = document.createElement('video')
         vid.preload = 'metadata'
-        const timeout = setTimeout(() => { vid.src = ''; resolve('broken') }, 8000)
+        // 15s timeout — generous for large files / slow codecs
+        const timeout = setTimeout(() => { vid.src = ''; resolve('timeout') }, 15000)
         vid.onloadedmetadata = () => {
           clearTimeout(timeout)
-          // Check if duration is valid
-          if (vid.duration > 0 && isFinite(vid.duration)) {
-            resolve('ok')
-          } else {
-            resolve('broken')
-          }
+          resolve(vid.duration > 0 && isFinite(vid.duration) ? 'ok' : 'broken')
           vid.src = ''
         }
+        // Only actual errors = broken (not timeouts)
         vid.onerror = () => { clearTimeout(timeout); vid.src = ''; resolve('broken') }
         vid.src = videoUrl
       })
 
-      if (status === 'ok') {
+      if (status === 'ok' || status === 'timeout') {
+        // Timeout = benefit of the doubt — file might just be slow to decode
         result.healthy++
         if (track.badFile) {
-          // Clear bad flag — file is actually healthy
           onUpdate(track.id, false, null)
           await syncEngine.syncTrackUpdate(track.id, { badFile: false, badReason: undefined })
         }
       } else {
+        // Only actual video errors flag as broken
         result.broken++
         if (!track.badFile) {
-          onUpdate(track.id, true, 'Failed health scan — could not load metadata')
-          await syncEngine.syncTrackUpdate(track.id, { badFile: true, badReason: 'Failed health scan — could not load metadata' })
+          onUpdate(track.id, true, 'Video element error — file may be corrupt')
+          await syncEngine.syncTrackUpdate(track.id, { badFile: true, badReason: 'Video element error — file may be corrupt' })
         }
       }
     } catch {
-      result.broken++
+      // Exception = treat as healthy (benefit of the doubt)
+      result.healthy++
     }
 
     done++
@@ -468,14 +457,34 @@ export async function healthScan(
     }))
   }
 
-  // Process in batches
   for (let i = 0; i < testable.length; i += CONCURRENCY) {
-    const batch = testable.slice(i, i + CONCURRENCY)
-    await Promise.all(batch.map(testOne))
+    await Promise.all(testable.slice(i, i + CONCURRENCY).map(testOne))
   }
 
-  console.log(`[healthScan] Complete: ${result.healthy} healthy, ${result.broken} broken, ${result.noFile} no file`)
+  console.log(`[healthScan] Done: ${result.healthy} healthy, ${result.broken} broken`)
   toast.success(`Health scan: ${result.healthy} healthy, ${result.broken} broken`)
-
   return result
+}
+
+/** Test a single track — used by the "Test Play" button on red-flagged tracks */
+export async function testSingleTrack(track: Track): Promise<boolean> {
+  const videoUrl = track.videoUrl || (getFileRef(track.id) ? URL.createObjectURL(getFileRef(track.id)!) : null)
+  if (!videoUrl) return false
+
+  return new Promise((resolve) => {
+    const vid = document.createElement('video')
+    vid.preload = 'auto'
+    const timeout = setTimeout(() => { vid.src = ''; resolve(true) }, 15000) // timeout = pass
+    vid.oncanplay = () => {
+      clearTimeout(timeout)
+      // Try to actually play 0.5 seconds
+      vid.play().then(() => {
+        setTimeout(() => { vid.pause(); vid.src = ''; resolve(true) }, 500)
+      }).catch(() => {
+        vid.src = ''; resolve(false)
+      })
+    }
+    vid.onerror = () => { clearTimeout(timeout); vid.src = ''; resolve(false) }
+    vid.src = videoUrl
+  })
 }
