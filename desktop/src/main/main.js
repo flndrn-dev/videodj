@@ -2,127 +2,127 @@ const { app, BrowserWindow, shell, ipcMain, dialog, nativeTheme } = require('ele
 const path = require('path')
 const { spawn } = require('child_process')
 const net = require('net')
+const fs = require('fs')
 
 let autoUpdater = null
 try {
   const { autoUpdater: au } = require('electron-updater')
   autoUpdater = au
-} catch {
-  // electron-updater not available in dev
-}
+} catch {}
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
 const isDev = !app.isPackaged
-const WEB_PORT = isDev ? 3030 : 3030 // same port in dev and prod
-const WEB_URL = `http://localhost:${WEB_PORT}`
+const LOCAL_PORT = 3030
+const LOCAL_URL = `http://localhost:${LOCAL_PORT}`
+const PRODUCTION_URL = 'https://app.videodj.studio'
 
 let mainWindow = null
 let nextServer = null
 
 // ---------------------------------------------------------------------------
-// Next.js standalone server (production only)
+// Next.js standalone server (production)
 // ---------------------------------------------------------------------------
 
 function startNextServer() {
-  return new Promise((resolve, reject) => {
-    if (isDev) {
-      // In dev mode, the Next.js dev server is started by concurrently
+  return new Promise((resolve) => {
+    if (isDev) { resolve(); return }
+
+    const appPath = path.join(process.resourcesPath, 'app')
+    const serverJs = path.join(appPath, 'web', 'server.js')
+
+    if (!fs.existsSync(serverJs)) {
+      console.log('[Next.js] No bundled server — will use production URL')
       resolve()
       return
     }
 
-    // Production: start the Next.js standalone server from extraResources
-    const appPath = path.join(process.resourcesPath, 'app')
-    const serverPath = path.join(appPath, 'web', 'server.js')
-
     const env = {
       ...process.env,
-      PORT: String(WEB_PORT),
+      PORT: String(LOCAL_PORT),
       HOSTNAME: 'localhost',
       NODE_ENV: 'production',
     }
 
-    // Copy .env to the server directory if it exists
+    // Load .env from userData
     const envPath = path.join(app.getPath('userData'), '.env')
-    const fs = require('fs')
     if (fs.existsSync(envPath)) {
-      env.DOTENV_CONFIG_PATH = envPath
+      const lines = fs.readFileSync(envPath, 'utf8').split('\n')
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed || trimmed.startsWith('#')) continue
+        const eq = trimmed.indexOf('=')
+        if (eq > 0) env[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim()
+      }
     }
 
-    nextServer = spawn(process.execPath.replace(/Electron/, 'node').replace(/electron/, 'node'),
-      [serverPath], {
+    console.log('[Next.js] Starting standalone server:', serverJs)
+
+    // Spawn node with the correct working directory
+    nextServer = spawn('node', [serverJs], {
       cwd: path.join(appPath, 'web'),
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
-    // Fallback: use node from PATH if the above doesn't work
-    if (!nextServer.pid) {
-      nextServer = spawn('node', [serverPath], {
-        cwd: path.join(appPath, 'web'),
-        env,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      })
-    }
-
     nextServer.stdout.on('data', (data) => {
       const msg = data.toString()
-      console.log('[Next.js]', msg)
+      console.log('[Next.js]', msg.trim())
       if (msg.includes('Ready') || msg.includes('started') || msg.includes('listening')) {
         resolve()
       }
     })
 
     nextServer.stderr.on('data', (data) => {
-      console.error('[Next.js Error]', data.toString())
+      console.error('[Next.js ERR]', data.toString().trim())
     })
 
     nextServer.on('error', (err) => {
-      console.error('[Next.js] Failed to start:', err)
-      reject(err)
+      console.error('[Next.js] Spawn failed:', err.message)
+      nextServer = null
+      resolve() // fall through to production URL
     })
 
     nextServer.on('exit', (code) => {
-      console.log('[Next.js] Server exited with code:', code)
+      console.log('[Next.js] Exited with code:', code)
       nextServer = null
     })
 
-    // Timeout: if server doesn't report ready in 15s, try connecting anyway
-    setTimeout(() => resolve(), 15000)
+    // If server doesn't signal ready in 20s, resolve anyway
+    setTimeout(resolve, 20000)
   })
 }
 
 // ---------------------------------------------------------------------------
-// Wait for the web server to be accessible
+// Check if local server is running
 // ---------------------------------------------------------------------------
 
-function waitForServer(port, maxRetries = 30) {
+function isPortOpen(port) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket()
+    socket.setTimeout(2000)
+    socket.on('connect', () => { socket.destroy(); resolve(true) })
+    socket.on('timeout', () => { socket.destroy(); resolve(false) })
+    socket.on('error', () => { resolve(false) })
+    socket.connect(port, 'localhost')
+  })
+}
+
+function waitForServer(port, maxRetries = 40) {
   return new Promise((resolve, reject) => {
     let retries = 0
     function tryConnect() {
       const socket = new net.Socket()
       socket.setTimeout(1000)
-      socket.on('connect', () => {
-        socket.destroy()
-        resolve()
-      })
-      socket.on('timeout', () => {
-        socket.destroy()
-        retry()
-      })
-      socket.on('error', () => {
-        retry()
-      })
+      socket.on('connect', () => { socket.destroy(); resolve() })
+      socket.on('timeout', () => { socket.destroy(); retry() })
+      socket.on('error', () => { retry() })
       socket.connect(port, 'localhost')
     }
     function retry() {
-      if (++retries >= maxRetries) {
-        reject(new Error(`Server not ready after ${maxRetries} retries`))
-        return
-      }
+      if (++retries >= maxRetries) { reject(new Error('Server timeout')); return }
       setTimeout(tryConnect, 500)
     }
     tryConnect()
@@ -133,8 +133,7 @@ function waitForServer(port, maxRetries = 30) {
 // Create main window
 // ---------------------------------------------------------------------------
 
-function createWindow() {
-  // Force dark mode
+function createWindow(url) {
   nativeTheme.themeSource = 'dark'
 
   mainWindow = new BrowserWindow({
@@ -149,45 +148,30 @@ function createWindow() {
       preload: path.join(__dirname, '..', 'preload', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false, // Allow loading local video files
+      webSecurity: false,
     },
     show: false,
     icon: path.join(__dirname, '..', '..', 'resources', 'icon.png'),
   })
 
-  // Show when ready to prevent flash
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show()
-  })
+  mainWindow.once('ready-to-show', () => { mainWindow.show() })
+  mainWindow.loadURL(url)
 
-  // Load the Next.js app
-  mainWindow.loadURL(WEB_URL)
-
-  // Open external links in default browser
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://localhost')) {
+  mainWindow.webContents.setWindowOpenHandler(({ url: linkUrl }) => {
+    if (linkUrl.startsWith('http://localhost') || linkUrl.includes('videodj.studio')) {
       return { action: 'allow' }
     }
-    shell.openExternal(url)
+    shell.openExternal(linkUrl)
     return { action: 'deny' }
   })
 
-  // Open DevTools in dev mode (suppress Autofill errors)
-  if (isDev) {
-    mainWindow.webContents.openDevTools({ mode: 'detach' })
-    // Suppress Chrome-specific DevTools protocol errors (Autofill.enable etc.)
-    mainWindow.webContents.on('console-message', (_e, level, message) => {
-      if (level === 3 && message.includes('Autofill.')) return // suppress
-    })
-  }
+  if (isDev) mainWindow.webContents.openDevTools({ mode: 'detach' })
 
-  mainWindow.on('closed', () => {
-    mainWindow = null
-  })
+  mainWindow.on('closed', () => { mainWindow = null })
 }
 
 // ---------------------------------------------------------------------------
-// IPC Handlers — native file system access
+// IPC Handlers
 // ---------------------------------------------------------------------------
 
 ipcMain.handle('dialog:openFolder', async () => {
@@ -195,8 +179,7 @@ ipcMain.handle('dialog:openFolder', async () => {
     properties: ['openDirectory'],
     title: 'Select Video Folder',
   })
-  if (result.canceled) return null
-  return result.filePaths[0]
+  return result.canceled ? null : result.filePaths[0]
 })
 
 ipcMain.handle('dialog:openFiles', async (_, filters) => {
@@ -205,51 +188,31 @@ ipcMain.handle('dialog:openFiles', async (_, filters) => {
     title: 'Select Video Files',
     filters: filters || [
       { name: 'Video Files', extensions: ['mp4', 'webm', 'mkv', 'avi', 'mov'] },
-      { name: 'Audio Files', extensions: ['mp3', 'wav', 'flac', 'ogg', 'm4a'] },
     ],
   })
-  if (result.canceled) return []
-  return result.filePaths
+  return result.canceled ? [] : result.filePaths
 })
 
 ipcMain.handle('dialog:saveFile', async (_, defaultName) => {
   const result = await dialog.showSaveDialog(mainWindow, {
     title: 'Save Recording',
     defaultPath: defaultName || 'dj-mix.webm',
-    filters: [
-      { name: 'WebM Video', extensions: ['webm'] },
-      { name: 'All Files', extensions: ['*'] },
-    ],
+    filters: [{ name: 'WebM Video', extensions: ['webm'] }],
   })
-  if (result.canceled) return null
-  return result.filePath
+  return result.canceled ? null : result.filePath
 })
 
-ipcMain.handle('fs:readFile', async (_, filePath) => {
-  const fs = require('fs')
-  return fs.readFileSync(filePath)
-})
-
-ipcMain.handle('app:getPath', (_, name) => {
-  return app.getPath(name)
-})
-
-ipcMain.handle('app:getVersion', () => {
-  return app.getVersion()
-})
-
-ipcMain.handle('app:isPackaged', () => {
-  return app.isPackaged
-})
+ipcMain.handle('fs:readFile', async (_, filePath) => fs.readFileSync(filePath))
+ipcMain.handle('app:getPath', (_, name) => app.getPath(name))
+ipcMain.handle('app:getVersion', () => app.getVersion())
+ipcMain.handle('app:isPackaged', () => app.isPackaged)
 
 ipcMain.handle('app:checkForUpdate', async () => {
   if (!autoUpdater) return { available: false }
   try {
     const result = await autoUpdater.checkForUpdates()
     return { available: !!result?.updateInfo, version: result?.updateInfo?.version }
-  } catch {
-    return { available: false }
-  }
+  } catch { return { available: false } }
 })
 
 ipcMain.handle('app:installUpdate', () => {
@@ -260,10 +223,8 @@ ipcMain.handle('app:installUpdate', () => {
 // App lifecycle
 // ---------------------------------------------------------------------------
 
-// Set app name for dock tooltip (overrides "Electron" in dev mode)
 app.setName('videoDJ.Studio')
 
-// Prevent multiple instances — if another instance is already running, focus it
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
@@ -277,66 +238,56 @@ if (!gotLock) {
 }
 
 app.whenReady().then(async () => {
-  // Set dock icon to videoDJ logo (macOS dev mode)
   if (process.platform === 'darwin' && app.dock) {
-    const iconPath = path.join(__dirname, '..', '..', 'resources', 'icon.png')
-    try { app.dock.setIcon(iconPath) } catch {}
-  }
-  try {
-    if (!isDev) {
-      await startNextServer()
-    }
-    await waitForServer(WEB_PORT)
-    createWindow()
-  } catch (err) {
-    console.error('Failed to start:', err)
-    // Try to create window anyway — user might have started web dev server manually
-    createWindow()
+    try { app.dock.setIcon(path.join(__dirname, '..', '..', 'resources', 'icon.png')) } catch {}
   }
 
-  // Auto-update (production only)
+  let url = PRODUCTION_URL
+
+  if (isDev) {
+    // Dev mode — use local Next.js dev server
+    url = LOCAL_URL
+  } else {
+    // Production — try to start bundled server, fall back to production URL
+    try {
+      await startNextServer()
+      const localUp = await isPortOpen(LOCAL_PORT)
+      if (!localUp && nextServer) {
+        await waitForServer(LOCAL_PORT)
+      }
+      if (await isPortOpen(LOCAL_PORT)) {
+        url = LOCAL_URL
+        console.log('[App] Using local server:', url)
+      } else {
+        console.log('[App] Local server not available — using production:', url)
+      }
+    } catch {
+      console.log('[App] Falling back to production URL:', url)
+    }
+  }
+
+  createWindow(url)
+
+  // Auto-update
   if (!isDev && autoUpdater) {
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = true
-
-    autoUpdater.on('update-available', (info) => {
-      console.log('[Update] Available:', info.version)
-      mainWindow?.webContents.send('update:available', info.version)
-    })
-
-    autoUpdater.on('update-downloaded', (info) => {
-      console.log('[Update] Downloaded:', info.version)
-      mainWindow?.webContents.send('update:downloaded', info.version)
-    })
-
-    autoUpdater.on('error', (err) => {
-      console.error('[Update] Error:', err)
-    })
-
-    // Check for updates every 4 hours
+    autoUpdater.on('update-available', (info) => mainWindow?.webContents.send('update:available', info.version))
+    autoUpdater.on('update-downloaded', (info) => mainWindow?.webContents.send('update:downloaded', info.version))
+    autoUpdater.on('error', () => {})
     autoUpdater.checkForUpdates().catch(() => {})
-    setInterval(() => {
-      autoUpdater.checkForUpdates().catch(() => {})
-    }, 4 * 60 * 60 * 1000)
+    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 60 * 60 * 1000)
   }
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
-    }
+    if (BrowserWindow.getAllWindows().length === 0) createWindow(url)
   })
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('before-quit', () => {
-  // Kill the Next.js server on quit
-  if (nextServer) {
-    nextServer.kill()
-    nextServer = null
-  }
+  if (nextServer) { nextServer.kill(); nextServer = null }
 })
