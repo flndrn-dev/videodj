@@ -263,6 +263,19 @@ ipcMain.handle('app:installUpdate', () => {
 // Set app name for dock tooltip (overrides "Electron" in dev mode)
 app.setName('videoDJ.Studio')
 
+// Prevent multiple instances — if another instance is already running, focus it
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+}
+
 app.whenReady().then(async () => {
   // Set dock icon to videoDJ logo (macOS dev mode)
   if (process.platform === 'darwin' && app.dock) {
