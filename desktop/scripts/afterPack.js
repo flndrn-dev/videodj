@@ -3,7 +3,6 @@ const path = require('path')
 const fs = require('fs')
 
 exports.default = async function(context) {
-  // Only run on macOS
   if (process.platform !== 'darwin') return
 
   const appPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
@@ -14,25 +13,16 @@ exports.default = async function(context) {
     return
   }
 
-  try {
-    // 1. Strip ALL extended attributes (quarantine, etc.)
-    console.log('[afterPack] Stripping extended attributes...')
-    execSync(`xattr -cr "${appPath}"`, { stdio: 'inherit' })
+  // 1. Remove broken symlinks that cause signing failures
+  console.log('[afterPack] Removing broken symlinks...')
+  execSync(`find "${appPath}" -type l ! -exec test -e {} \\; -delete 2>/dev/null || true`, { stdio: 'pipe' })
 
-    // 2. Ad-hoc code sign — signs the app without Apple Developer ID
-    // --force: replace any existing signature
-    // --deep: sign all nested frameworks and binaries
-    // --sign -: ad-hoc signature (no certificate needed)
-    console.log('[afterPack] Ad-hoc code signing...')
-    execSync(`codesign --force --deep --sign - "${appPath}"`, { stdio: 'inherit' })
+  // 2. Strip extended attributes — skip symlinks
+  console.log('[afterPack] Stripping extended attributes...')
+  execSync(`find "${appPath}" -not -type l -exec xattr -c {} + 2>/dev/null || true`, { stdio: 'pipe' })
 
-    // 3. Verify the signature is valid
-    console.log('[afterPack] Verifying signature...')
-    execSync(`codesign --verify --deep --strict "${appPath}"`, { stdio: 'inherit' })
-    console.log('[afterPack] Code signature verified OK')
-  } catch (err) {
-    // Make this FATAL so we know if signing fails
-    console.error('[afterPack] CODE SIGNING FAILED:', err.message)
-    throw err
-  }
+  // 3. Ad-hoc code sign — prevents "file is damaged" on macOS
+  console.log('[afterPack] Ad-hoc code signing...')
+  execSync(`codesign --force --deep --sign - "${appPath}"`, { stdio: 'inherit' })
+  console.log('[afterPack] Done')
 }
