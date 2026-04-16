@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     )
     await pool.end()
 
-    const verifyUrl = `${BASE_URL}/api/auth/verify?token=${token}`
+    const verifyUrl = `${BASE_URL}/api/auth/verify/web?token=${token}`
 
     // Send email
     if (resend) {

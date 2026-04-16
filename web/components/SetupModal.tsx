@@ -646,7 +646,7 @@ export function SetupModal({ onClose, onLibraryLoaded, onAgentConnected }: Setup
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src="/logo.svg" alt="videoDJ.Studio" width={48} height={48} style={{ margin: '0 auto 12px' }} />
                   <h2 style={{ fontSize: 20, fontWeight: 900, margin: 0 }}>video<span style={{ color: '#ffff00' }}>DJ</span>.Studio</h2>
-                  <p style={{ fontSize: 11, color: '#555570', marginTop: 4 }}>v1.0.1</p>
+                  <p style={{ fontSize: 11, color: '#555570', marginTop: 4 }}>v1.0.2</p>
                   <p style={{ fontSize: 11, color: '#888', marginTop: 16, lineHeight: 1.6 }}>
                     AI-powered Video DJ & Auto-mixing application.<br />
                     Built for DJs who stream.

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
@@ -10,6 +10,11 @@ export default function SignupPage() {
   const [focused, setFocused] = useState(false)
   const [hover, setHover] = useState(false)
 
+  useEffect(() => {
+    const isElectron = !!(window as unknown as { electronAPI?: { isElectron?: boolean } }).electronAPI?.isElectron
+    if (isElectron) window.location.replace('/desktop/signup')
+  }, [])
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!email) return
@@ -17,11 +22,10 @@ export default function SignupPage() {
     setLoading(true)
 
     try {
-      const isDesktop = typeof window !== 'undefined' && !!(window as unknown as { electronAPI?: { isElectron?: boolean } }).electronAPI?.isElectron
-      const res = await fetch('/api/auth/magic-link', {
+      const res = await fetch('/api/auth/magic-link/web', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, mode: 'signup', client: isDesktop ? 'desktop' : 'web' }),
+        body: JSON.stringify({ email, mode: 'signup' }),
       })
       const data = await res.json()
       if (res.ok) setSent(true)

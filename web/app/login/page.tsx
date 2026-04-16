@@ -1,7 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
+// Web App-only sign-in. Posts to /api/auth/magic-link/web, which emails an
+// https:// link. If this page is somehow opened inside the Desktop App we
+// bounce to /desktop/login so the user never gets a web-scoped token in a
+// context where they'd end up on the web deck.
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
@@ -10,6 +14,11 @@ export default function LoginPage() {
   const [focused, setFocused] = useState(false)
   const [hover, setHover] = useState(false)
 
+  useEffect(() => {
+    const isElectron = !!(window as unknown as { electronAPI?: { isElectron?: boolean } }).electronAPI?.isElectron
+    if (isElectron) window.location.replace('/desktop/login')
+  }, [])
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!email) return
@@ -17,11 +26,10 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const isDesktop = typeof window !== 'undefined' && !!(window as unknown as { electronAPI?: { isElectron?: boolean } }).electronAPI?.isElectron
-      const res = await fetch('/api/auth/magic-link', {
+      const res = await fetch('/api/auth/magic-link/web', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, client: isDesktop ? 'desktop' : 'web' }),
+        body: JSON.stringify({ email }),
       })
       const data = await res.json()
       if (res.ok) setSent(true)

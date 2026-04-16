@@ -47,7 +47,9 @@ function handleDeepLink(rawUrl) {
   const token = parsed.searchParams.get('token')
   if (!token) return
 
-  const target = `${baseUrl}/api/auth/verify?token=${encodeURIComponent(token)}`
+  // Desktop-scoped verify endpoint. A web-scoped token will be rejected
+  // server-side with an error page, so a shared email flow can't slip through.
+  const target = `${baseUrl}/api/auth/verify/desktop?token=${encodeURIComponent(token)}`
 
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore()
@@ -200,6 +202,26 @@ function createWindow(url) {
     pendingDeepLink = null
     handleDeepLink(deferred)
   }
+
+  // Hard rule: the Desktop App must never display the web-scoped login or
+  // signup pages. If navigation lands on /login or /signup (via a link, a
+  // 307 redirect, or a bookmark) we rewrite it to the /desktop equivalent so
+  // the user can't accidentally create a web-scoped token from inside the
+  // app. Covers both client-side navigation and HTTP redirects from the
+  // proxy middleware.
+  const rewriteToDesktop = (event, navUrl) => {
+    try {
+      const u = new URL(navUrl)
+      const p = u.pathname.replace(/\/+$/, '') || '/'
+      if (p === '/login' || p === '/signup') {
+        event.preventDefault()
+        u.pathname = p === '/login' ? '/desktop/login' : '/desktop/signup'
+        mainWindow.loadURL(u.toString())
+      }
+    } catch { /* ignore unparseable URLs */ }
+  }
+  mainWindow.webContents.on('will-navigate', rewriteToDesktop)
+  mainWindow.webContents.on('will-redirect', rewriteToDesktop)
 
   mainWindow.webContents.setWindowOpenHandler(({ url: linkUrl }) => {
     if (linkUrl.startsWith('http://localhost') || linkUrl.includes('videodj.studio')) {

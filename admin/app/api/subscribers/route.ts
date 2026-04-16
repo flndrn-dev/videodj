@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
               <h1 style="color:#ffff00;font-size:20px;font-weight:600;text-align:center;margin-bottom:8px;">Welcome to videoDJ.Studio!</h1>
               <p style="color:#9898b8;font-size:14px;text-align:center;line-height:1.6;margin-bottom:8px;">As an early subscriber, you get <strong style="color:#e8e8f2;">14 days free</strong> (double the standard 7-day trial).</p>
               <p style="color:#9898b8;font-size:14px;text-align:center;line-height:1.6;margin-bottom:32px;">Click below to activate your account.</p>
-              <div style="text-align:center;margin-bottom:32px;"><a href="${APP_URL}/api/auth/verify?token=${token}" style="display:inline-block;background:#ffff00;color:#14141f;padding:14px 40px;border-radius:12px;font-weight:600;text-decoration:none;font-size:14px;">Activate Account</a></div>
+              <div style="text-align:center;margin-bottom:32px;"><a href="${APP_URL}/api/auth/verify/web?token=${token}" style="display:inline-block;background:#ffff00;color:#14141f;padding:14px 40px;border-radius:12px;font-weight:600;text-decoration:none;font-size:14px;">Activate Account</a></div>
             </div>`,
           })
         }

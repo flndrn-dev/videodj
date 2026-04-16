@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
       [email, token, expiresAt.toISOString()]
     )
 
-    const inviteUrl = `${APP_URL}/api/auth/verify?token=${token}`
+    const inviteUrl = `${APP_URL}/api/auth/verify/web?token=${token}`
     const displayName = name || email.split('@')[0]
     const roleLabel = userRoles.map((r: string) => r.replace(/_/g, ' ')).join(', ')
 

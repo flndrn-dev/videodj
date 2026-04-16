@@ -1,8 +1,9 @@
 {
   "name": "djstudio-desktop",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "videoDJ.Studio — AI-powered Video DJ Desktop App",
   "author": "mavi <info@videodj.studio>",
+  "homepage": "https://videodj.studio",
   "main": "src/main/main.js",
   "scripts": {
     "dev": "node dev.js",

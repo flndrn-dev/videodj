@@ -155,7 +155,7 @@ export async function POST(
       [email, token, expiresAt.toISOString()]
     )
 
-    const loginUrl = `${APP_URL}/api/auth/verify?token=${token}`
+    const loginUrl = `${APP_URL}/api/auth/verify/web?token=${token}`
 
     return NextResponse.json({ loginUrl, email: userResult.rows[0].email, name: userResult.rows[0].name })
   } catch (err) {
