@@ -1,0 +1,115 @@
+name: release-desktop
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.1). Creates a draft release if it does not exist.'
+        required: true
+
+permissions:
+  contents: write  # needed to create/update the GitHub Release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: dist:mac
+            artifacts: |
+              desktop/dist/*.dmg
+              desktop/dist/*.dmg.blockmap
+              desktop/dist/*-mac.zip
+              desktop/dist/*-mac.zip.blockmap
+              desktop/dist/latest-mac.yml
+          - os: windows-latest
+            script: dist:win
+            artifacts: |
+              desktop/dist/*.exe
+              desktop/dist/*.exe.blockmap
+              desktop/dist/latest.yml
+          - os: ubuntu-latest
+            script: dist:linux
+            artifacts: |
+              desktop/dist/*.AppImage
+              desktop/dist/*.deb
+              desktop/dist/latest-linux.yml
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # Workspaces are declared at the repo root, so a single install hydrates
+      # web/, desktop/, admin/, and site/ together.
+      - name: Install dependencies
+        run: npm ci --workspaces --include-workspace-root
+
+      # dist:mac / dist:win / dist:linux each run `next build` in web/ first,
+      # then electron-builder to produce the installer.
+      - name: Build ${{ matrix.os }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Skip codesigning — we have "identity": "-" (ad-hoc) in package.json
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # Keep electron-builder quiet about download mirrors in CI
+          USE_HARD_LINKS: 'false'
+        run: npm run ${{ matrix.script }}
+
+      - name: Upload artifacts to workflow run
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Resolve tag name
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: ${{ steps.tag.outputs.name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.dmg.blockmap
+            artifacts/**/*-mac.zip
+            artifacts/**/*-mac.zip.blockmap
+            artifacts/**/*.exe
+            artifacts/**/*.exe.blockmap
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
+            artifacts/**/latest*.yml

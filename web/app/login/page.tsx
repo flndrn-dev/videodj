@@ -17,10 +17,11 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
+      const isDesktop = typeof window !== 'undefined' && !!(window as unknown as { electronAPI?: { isElectron?: boolean } }).electronAPI?.isElectron
       const res = await fetch('/api/auth/magic-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, client: isDesktop ? 'desktop' : 'web' }),
       })
       const data = await res.json()
       if (res.ok) setSent(true)

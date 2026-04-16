@@ -112,7 +112,7 @@ const accentColors: Record<string, string> = {
 // Sidebar
 // ---------------------------------------------------------------------------
 
-const VERSION = '1.0.0'
+const VERSION = '1.0.1'
 const RELEASE_URL = `https://github.com/flndrn-dev/videodj/releases/download/v${VERSION}`
 
 const desktopBuilds = [

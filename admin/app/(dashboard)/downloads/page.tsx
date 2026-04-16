@@ -8,7 +8,7 @@ import { Download, Monitor, Apple, Terminal, Package, CheckCircle2, ChevronDown 
 // Build config
 // ---------------------------------------------------------------------------
 
-const VERSION = '1.0.0'
+const VERSION = '1.0.1'
 const BASE_URL = 'https://github.com/flndrn-dev/videodj/releases/download'
 
 interface Build {

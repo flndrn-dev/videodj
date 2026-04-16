@@ -18,9 +18,46 @@ const isDev = !app.isPackaged
 const LOCAL_PORT = 3030
 const LOCAL_URL = `http://localhost:${LOCAL_PORT}`
 const PRODUCTION_URL = 'https://app.videodj.studio'
+const PROTOCOL = isDev ? 'videodj-dev' : 'videodj'
 
 let mainWindow = null
 let nextServer = null
+let baseUrl = PRODUCTION_URL // set once we know whether local server is up
+let pendingDeepLink = null   // deep link captured before the window is ready
+
+// ---------------------------------------------------------------------------
+// Deep link handling (videodj://auth/verify?token=…)
+// ---------------------------------------------------------------------------
+
+function extractDeepLink(argv) {
+  if (!Array.isArray(argv)) return null
+  return argv.find((a) => typeof a === 'string' && a.startsWith(`${PROTOCOL}://`)) || null
+}
+
+function handleDeepLink(rawUrl) {
+  if (!rawUrl) return
+  let parsed
+  try { parsed = new URL(rawUrl) } catch { return }
+
+  // Only the auth/verify path is supported today — ignore anything else to
+  // avoid turning the protocol handler into an open redirector.
+  const path = (parsed.host + parsed.pathname).replace(/\/+$/, '')
+  if (path !== 'auth/verify') return
+
+  const token = parsed.searchParams.get('token')
+  if (!token) return
+
+  const target = `${baseUrl}/api/auth/verify?token=${encodeURIComponent(token)}`
+
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+    mainWindow.loadURL(target)
+  } else {
+    // Window not ready yet — stash and let createWindow pick it up
+    pendingDeepLink = target
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Next.js standalone server (production)
@@ -157,6 +194,13 @@ function createWindow(url) {
   mainWindow.once('ready-to-show', () => { mainWindow.show() })
   mainWindow.loadURL(url)
 
+  // If a deep link arrived before the window existed, process it now that it does.
+  if (pendingDeepLink) {
+    const deferred = pendingDeepLink
+    pendingDeepLink = null
+    handleDeepLink(deferred)
+  }
+
   mainWindow.webContents.setWindowOpenHandler(({ url: linkUrl }) => {
     if (linkUrl.startsWith('http://localhost') || linkUrl.includes('videodj.studio')) {
       return { action: 'allow' }
@@ -225,17 +269,39 @@ ipcMain.handle('app:installUpdate', () => {
 
 app.setName('videoDJ.Studio')
 
+// Register the custom protocol so the OS routes videodj:// links to us.
+// On Windows/Linux the second arg is the path back to the executable.
+if (process.defaultApp && process.argv.length >= 2) {
+  app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])])
+} else {
+  app.setAsDefaultProtocolClient(PROTOCOL)
+}
+
+// Deep link delivered as a launch arg (Windows/Linux cold start)
+const initialDeepLink = extractDeepLink(process.argv)
+if (initialDeepLink) pendingDeepLink = initialDeepLink
+
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
+    // Windows/Linux: deep link arrives as a command-line arg to a second instance
+    const link = extractDeepLink(argv)
+    if (link) handleDeepLink(link)
+
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.focus()
     }
   })
 }
+
+// macOS: deep link delivered via open-url
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  handleDeepLink(url)
+})
 
 app.whenReady().then(async () => {
   if (process.platform === 'darwin' && app.dock) {
@@ -265,6 +331,8 @@ app.whenReady().then(async () => {
       console.log('[App] Falling back to production URL:', url)
     }
   }
+
+  baseUrl = url
 
   createWindow(url)
 

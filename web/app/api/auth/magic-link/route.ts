@@ -60,11 +60,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Too many requests. Try again in a minute.' }, { status: 429 })
     }
 
-    const { email: rawEmail, mode } = await req.json()
+    const { email: rawEmail, mode, client: rawClient } = await req.json()
     const email = (rawEmail || '').trim().toLowerCase()
     if (!email || !email.includes('@')) {
       return NextResponse.json({ error: 'Valid email required' }, { status: 400 })
     }
+    const client: 'desktop' | 'web' = rawClient === 'desktop' ? 'desktop' : 'web'
 
     const pool = await getPool()
 
@@ -102,7 +103,13 @@ export async function POST(req: NextRequest) {
       [email, token, expiresAt.toISOString()]
     )
 
-    const magicUrl = `${BASE_URL}/api/auth/verify?token=${token}`
+    const webUrl = `${BASE_URL}/api/auth/verify?token=${token}`
+    const desktopUrl = `videodj://auth/verify?token=${token}`
+    const primaryUrl = client === 'desktop' ? desktopUrl : webUrl
+    const fallbackUrl = client === 'desktop' ? webUrl : desktopUrl
+    const primaryLabel = client === 'desktop' ? 'Open in Desktop App' : 'Sign In'
+    const fallbackLabel = client === 'desktop' ? 'Sign in on the web instead' : 'Open in the Desktop App'
+    const magicUrl = primaryUrl // preserved for the plain-text body below
     const isSignup = mode === 'signup' && user.status === 'invited'
 
     // Send email via Resend
@@ -113,8 +120,8 @@ export async function POST(req: NextRequest) {
         to: email,
         subject: isSignup ? 'Welcome to videoDJ.Studio' : 'Sign in to videoDJ.Studio',
         text: isSignup
-          ? `Welcome to videoDJ.Studio\n\nClick this link to activate your account: ${magicUrl}\n\nThis link expires in 15 minutes.`
-          : `Sign in to videoDJ.Studio\n\nClick this link to sign in: ${magicUrl}\n\nThis link expires in 15 minutes.\n\nIf you didn't request this, you can safely ignore this email.`,
+          ? `Welcome to videoDJ.Studio\n\n${primaryLabel}: ${primaryUrl}\n\n${fallbackLabel}: ${fallbackUrl}\n\nThis link expires in 15 minutes.`
+          : `Sign in to videoDJ.Studio\n\n${primaryLabel}: ${primaryUrl}\n\n${fallbackLabel}: ${fallbackUrl}\n\nThis link expires in 15 minutes.\n\nIf you didn't request this, you can safely ignore this email.`,
         html: `
           <div style="background:#14141f;color:#e8e8f2;padding:48px 32px;font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;">
             <div style="text-align:center;margin-bottom:32px;">
@@ -128,11 +135,16 @@ export async function POST(req: NextRequest) {
             <p style="color:#9898b8;font-size:14px;text-align:center;line-height:1.6;margin-bottom:32px;">
               ${isSignup ? 'Click below to activate your account.' : 'Click the button below to sign in.'} This link expires in 15 minutes.
             </p>
-            <div style="text-align:center;margin-bottom:32px;">
-              <a href="${magicUrl}" style="display:inline-block;background:#ffff00;color:#14141f;padding:14px 40px;border-radius:12px;font-weight:600;text-decoration:none;font-size:14px;">
-                ${isSignup ? 'Activate Account' : 'Sign In'}
+            <div style="text-align:center;margin-bottom:20px;">
+              <a href="${primaryUrl}" style="display:inline-block;background:#ffff00;color:#14141f;padding:14px 40px;border-radius:12px;font-weight:600;text-decoration:none;font-size:14px;">
+                ${isSignup ? (client === 'desktop' ? 'Activate in Desktop App' : 'Activate Account') : primaryLabel}
               </a>
             </div>
+            <p style="text-align:center;margin:0 0 32px 0;">
+              <a href="${fallbackUrl}" style="color:#8a8aa5;font-size:12px;text-decoration:underline;">
+                ${fallbackLabel}
+              </a>
+            </p>
             <p style="color:#5a5a78;font-size:11px;text-align:center;">
               If you didn't request this, you can safely ignore this email.
             </p>

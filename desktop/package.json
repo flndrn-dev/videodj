@@ -1,6 +1,6 @@
 {
   "name": "djstudio-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "videoDJ.Studio — AI-powered Video DJ Desktop App",
   "author": "mavi <info@videodj.studio>",
   "main": "src/main/main.js",
@@ -20,6 +20,12 @@
       "buildResources": "resources"
     },
     "afterPack": "./scripts/afterPack.js",
+    "protocols": [
+      {
+        "name": "videoDJ.Studio",
+        "schemes": ["videodj"]
+      }
+    ],
     "files": [
       "src/main/**/*",
       "src/preload/**/*"
