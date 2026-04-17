@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -112,21 +112,99 @@ const accentColors: Record<string, string> = {
 // Sidebar
 // ---------------------------------------------------------------------------
 
-const VERSION = '1.0.2'
-const RELEASE_URL = `https://github.com/flndrn-dev/videodj/releases/download/v${VERSION}`
+// We resolve the real download URL at runtime from the GitHub Releases API
+// so the sidebar always points at whatever the most recent tag published —
+// no version hard-coded in the URL, no code change needed for new releases.
+const LATEST_RELEASE_API = 'https://api.github.com/repos/flndrn-dev/videodj/releases/latest'
+const LATEST_RELEASE_PAGE = 'https://github.com/flndrn-dev/videodj/releases/latest'
 
-const desktopBuilds = [
-  { label: 'macOS (Apple Silicon)', file: `videoDJ.Studio-${VERSION}-arm64.dmg`, icon: Apple, accent: '#a78bfa' },
-  { label: 'macOS (Intel)', file: `videoDJ.Studio-${VERSION}.dmg`, icon: Apple, accent: '#a78bfa' },
-  { label: 'Windows', file: `videoDJ.Studio-${VERSION}.exe`, icon: Monitor, accent: '#60a5fa' },
-  { label: 'Linux', file: `videoDJ.Studio-${VERSION}.AppImage`, icon: Terminal, accent: '#f97316' },
+type OSKey = 'mac-arm64' | 'mac-x64' | 'win' | 'linux'
+
+type PlatformMeta = {
+  key: OSKey
+  label: string
+  icon: LucideIcon
+  accent: string
+  // Picks the right asset out of the release asset list. First match wins,
+  // so ordering matters (e.g. mac-arm64 must check for "arm64" before the
+  // generic Intel .dmg selector).
+  match: (assetName: string) => boolean
+}
+
+const platforms: PlatformMeta[] = [
+  { key: 'mac-arm64', label: 'macOS (Apple Silicon)', icon: Apple, accent: '#a78bfa', match: (n) => /arm64.*\.dmg$/i.test(n) },
+  { key: 'mac-x64',   label: 'macOS (Intel)',         icon: Apple, accent: '#a78bfa', match: (n) => /\.dmg$/i.test(n) && !/arm64/i.test(n) },
+  { key: 'win',       label: 'Windows',               icon: Monitor, accent: '#60a5fa', match: (n) => /\.exe$/i.test(n) },
+  { key: 'linux',     label: 'Linux',                 icon: Terminal, accent: '#f97316', match: (n) => /\.AppImage$/i.test(n) },
 ]
+
+function detectOS(): OSKey | null {
+  if (typeof navigator === 'undefined') return null
+  const ua = navigator.userAgent.toLowerCase()
+  const platform =
+    (navigator as unknown as { userAgentData?: { platform?: string } }).userAgentData?.platform?.toLowerCase() ||
+    navigator.platform?.toLowerCase() || ''
+
+  if (platform.includes('mac') || ua.includes('macintosh')) {
+    // Best-effort Apple Silicon detection — the WebGL renderer reports
+    // "Apple …" on M-series Macs and "Intel …" on Intel Macs.
+    try {
+      const canvas = document.createElement('canvas')
+      const gl = canvas.getContext('webgl')
+      if (gl) {
+        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info')
+        if (debugInfo) {
+          const renderer = String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL))
+          if (renderer.includes('Apple')) return 'mac-arm64'
+          return 'mac-x64'
+        }
+      }
+    } catch { /* ignore — fall through to arm64 default */ }
+    return 'mac-arm64'
+  }
+  if (platform.includes('win') || ua.includes('windows')) return 'win'
+  if (platform.includes('linux') || ua.includes('linux')) return 'linux'
+  return null
+}
+
+type GithubAsset = { name: string; browser_download_url: string }
+type GithubRelease = { tag_name: string; assets: GithubAsset[] }
+
+function useLatestRelease() {
+  const [release, setRelease] = useState<GithubRelease | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(LATEST_RELEASE_API, { headers: { Accept: 'application/vnd.github+json' } })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json() as Promise<GithubRelease>
+      })
+      .then((data) => { if (!cancelled) { setRelease(data); setLoading(false) } })
+      .catch((e) => { if (!cancelled) { setError(String(e.message || e)); setLoading(false) } })
+    return () => { cancelled = true }
+  }, [])
+
+  return { release, error, loading }
+}
 
 export function Sidebar() {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [detectedOS, setDetectedOS] = useState<OSKey | null>(null)
+  const { release, error: releaseError, loading: releaseLoading } = useLatestRelease()
+
+  useEffect(() => { setDetectedOS(detectOS()) }, [])
+
+  // Resolve the download URL for the user's OS from the latest release.
+  const detectedPlatform = platforms.find((p) => p.key === detectedOS) ?? null
+  const matchedAsset = detectedPlatform && release
+    ? release.assets.find((a) => detectedPlatform.match(a.name)) ?? null
+    : null
 
   const sidebarWidth = collapsed ? 72 : 280
 
@@ -324,35 +402,81 @@ export function Sidebar() {
                   <div className="flex items-center gap-2">
                     <Download size={11} style={{ color: 'var(--brand-yellow)' }} />
                     <span className="text-[9px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>
-                      Desktop v{VERSION}
+                      Desktop {release?.tag_name ?? (releaseLoading ? '…' : 'latest')}
                     </span>
                   </div>
                 </div>
-                {desktopBuilds.map(build => (
-                  <a
-                    key={build.file}
-                    href={`${RELEASE_URL}/${build.file}`}
-                    download
-                    className="flex items-center gap-3 px-3 py-2.5 text-xs transition-all"
-                    style={{
-                      color: 'var(--text-secondary)',
-                      textDecoration: 'none',
-                      borderBottom: '1px solid var(--border-primary)',
-                    }}
-                    onMouseOver={e => {
-                      e.currentTarget.style.background = `${build.accent}15`
-                      e.currentTarget.style.color = build.accent
-                    }}
-                    onMouseOut={e => {
-                      e.currentTarget.style.background = 'transparent'
-                      e.currentTarget.style.color = 'var(--text-secondary)'
-                    }}
-                  >
-                    <build.icon size={14} style={{ color: build.accent }} />
-                    <span className="flex-1">{build.label}</span>
-                    <Download size={10} style={{ opacity: 0.5 }} />
-                  </a>
-                ))}
+
+                {/* Single OS-detected download button. No platform picker —
+                    the user gets exactly the build for the machine they're
+                    on, sourced from whatever is the latest release right
+                    now, not a hard-coded version. */}
+                {releaseLoading ? (
+                  <div className="px-3 py-3 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                    Checking for latest build…
+                  </div>
+                ) : releaseError || !release ? (
+                  <div className="px-3 py-3 text-xs" style={{ color: '#ef4444' }}>
+                    Could not reach GitHub Releases. Try again in a moment.
+                  </div>
+                ) : !detectedPlatform ? (
+                  <div className="px-3 py-3 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                    Your OS was not detected.{' '}
+                    <a href={LATEST_RELEASE_PAGE} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand-yellow)' }}>
+                      See all downloads
+                    </a>
+                  </div>
+                ) : !matchedAsset ? (
+                  <div className="px-3 py-3 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                    No {detectedPlatform.label} build in this release yet.{' '}
+                    <a href={LATEST_RELEASE_PAGE} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand-yellow)' }}>
+                      See all
+                    </a>
+                  </div>
+                ) : (
+                  <>
+                    <a
+                      href={matchedAsset.browser_download_url}
+                      download
+                      className="flex items-center gap-3 px-3 py-3 text-xs transition-all"
+                      style={{
+                        color: 'var(--text-secondary)',
+                        textDecoration: 'none',
+                        borderBottom: '1px solid var(--border-primary)',
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.background = `${detectedPlatform.accent}15`
+                        e.currentTarget.style.color = detectedPlatform.accent
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.background = 'transparent'
+                        e.currentTarget.style.color = 'var(--text-secondary)'
+                      }}
+                    >
+                      <detectedPlatform.icon size={16} style={{ color: detectedPlatform.accent }} />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                          Download for {detectedPlatform.label}
+                        </div>
+                        <div className="truncate text-[10px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                          {matchedAsset.name}
+                        </div>
+                      </div>
+                      <Download size={12} style={{ color: detectedPlatform.accent }} />
+                    </a>
+                    <a
+                      href={LATEST_RELEASE_PAGE}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center px-3 py-2 text-[10px]"
+                      style={{ color: 'var(--text-tertiary)', textDecoration: 'none' }}
+                      onMouseOver={(e) => { e.currentTarget.style.color = 'var(--brand-yellow)' }}
+                      onMouseOut={(e) => { e.currentTarget.style.color = 'var(--text-tertiary)' }}
+                    >
+                      Other platforms
+                    </a>
+                  </>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

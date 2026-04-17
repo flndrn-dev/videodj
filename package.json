@@ -1,6 +1,6 @@
 {
   "name": "djstudio",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "videoDJ.Studio — AI-powered Video DJ & Auto-mixing App",
   "private": true,
   "workspaces": [

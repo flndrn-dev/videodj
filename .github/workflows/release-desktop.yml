@@ -80,7 +80,13 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    # Publish whatever built successfully — don't hold the release hostage
+    # to one flaky matrix leg (Windows is currently broken on the hosted
+    # runner). We still require at least one matrix job to have produced
+    # artifacts, otherwise there's nothing to release.
+    if: |
+      always() &&
+      (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -96,13 +102,26 @@ jobs:
             echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Verify at least one platform produced artifacts
+        run: |
+          shopt -s globstar nullglob
+          files=(artifacts/**/*.dmg artifacts/**/*.exe artifacts/**/*.AppImage artifacts/**/*.deb)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::No installers were produced — all matrix jobs failed."
+            exit 1
+          fi
+          echo "Found ${#files[@]} installer(s) to publish."
+          printf '  %s\n' "${files[@]}"
+
       - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.name }}
           name: ${{ steps.tag.outputs.name }}
           generate_release_notes: true
-          fail_on_unmatched_files: true
+          # Don't fail if a platform didn't build — we already checked above
+          # that at least one did.
+          fail_on_unmatched_files: false
           files: |
             artifacts/**/*.dmg
             artifacts/**/*.dmg.blockmap
