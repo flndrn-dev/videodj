@@ -273,6 +273,100 @@ ipcMain.handle('app:getPath', (_, name) => app.getPath(name))
 ipcMain.handle('app:getVersion', () => app.getVersion())
 ipcMain.handle('app:isPackaged', () => app.isPackaged)
 
+// ---------------------------------------------------------------------------
+// Music library — persistent folder path stored to userData/library.json.
+// The renderer calls these instead of the browser's showDirectoryPicker()
+// so a page refresh / reboot restores the library silently, with zero
+// permission prompts (Electron has full native FS access).
+// ---------------------------------------------------------------------------
+
+const LIBRARY_STORE = () => path.join(app.getPath('userData'), 'library.json')
+const VIDEO_EXT_RE = /\.(mp4|mkv|avi|mov|webm|m4v)$/i
+
+function loadLibraryConfig() {
+  try {
+    const raw = fs.readFileSync(LIBRARY_STORE(), 'utf8')
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch { return {} }
+}
+
+function saveLibraryConfig(cfg) {
+  try {
+    fs.mkdirSync(path.dirname(LIBRARY_STORE()), { recursive: true })
+    fs.writeFileSync(LIBRARY_STORE(), JSON.stringify(cfg, null, 2), 'utf8')
+  } catch (err) {
+    console.error('[library] failed to persist config:', err.message)
+  }
+}
+
+// Recursively walk a directory and return every video file's metadata.
+// We return path + size + mtime only — never file bytes — so the renderer
+// can build Track objects without us streaming gigabytes over IPC.
+async function walkLibraryFolder(rootPath) {
+  const out = []
+  async function walk(dir) {
+    let entries
+    try { entries = await fs.promises.readdir(dir, { withFileTypes: true }) }
+    catch { return }
+    for (const entry of entries) {
+      const abs = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        // Skip the usual suspects that just waste time
+        if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
+        await walk(abs)
+      } else if (entry.isFile() && VIDEO_EXT_RE.test(entry.name)) {
+        try {
+          const stat = await fs.promises.stat(abs)
+          out.push({
+            name: entry.name,
+            path: abs,
+            size: stat.size,
+            mtime: stat.mtimeMs,
+            relPath: path.relative(rootPath, abs),
+          })
+        } catch { /* unreadable file — skip */ }
+      }
+    }
+  }
+  await walk(rootPath)
+  return out
+}
+
+// Pick a folder via the native OS dialog, persist its path, return the
+// walked file list immediately. This replaces the browser file picker in
+// Electron so the renderer never has to deal with FileSystemDirectoryHandle.
+ipcMain.handle('library:pick', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: 'Select your music folder',
+  })
+  if (result.canceled || !result.filePaths[0]) return null
+  const rootPath = result.filePaths[0]
+  saveLibraryConfig({ rootPath, pickedAt: Date.now() })
+  const files = await walkLibraryFolder(rootPath)
+  return { rootPath, files }
+})
+
+// Called by the renderer on every boot. Returns the previously-picked
+// folder and its current file list, or null if nothing is remembered or
+// the folder has since been deleted / moved. Zero user interaction.
+ipcMain.handle('library:restore', async () => {
+  const cfg = loadLibraryConfig()
+  if (!cfg.rootPath) return null
+  try { await fs.promises.access(cfg.rootPath) }
+  catch { return { rootPath: cfg.rootPath, missing: true, files: [] } }
+  const files = await walkLibraryFolder(cfg.rootPath)
+  return { rootPath: cfg.rootPath, files }
+})
+
+// Forget the saved folder (used when the user picks a new one explicitly
+// or clears their library from settings).
+ipcMain.handle('library:forget', async () => {
+  saveLibraryConfig({})
+  return true
+})
+
 ipcMain.handle('app:checkForUpdate', async () => {
   if (!autoUpdater) return { available: false }
   try {

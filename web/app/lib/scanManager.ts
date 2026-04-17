@@ -12,6 +12,13 @@ import { setFileRef, getFileRef, saveDirectoryHandle, loadDirectoryHandle } from
 import { extractFastMetadata } from '@/app/lib/extractMetadata'
 import { toast } from 'sonner'
 import * as syncEngine from '@/app/lib/syncEngine'
+import {
+  isElectronNativeLibraryAvailable,
+  pickElectronLibrary,
+  restoreElectronLibrary,
+  electronFileUrl,
+  type ElectronFileRef,
+} from '@/app/lib/electronLibrary'
 
 const VIDEO_EXTENSIONS = /\.(mp4|mkv|avi|mov|webm|m4v)$/i
 
@@ -209,9 +216,36 @@ export async function processFiles(files: File[]) {
   }
 }
 
-/** Pick a folder and start scanning. Returns false if the API isn't available (caller should fallback to file input). */
+/**
+ * Pick a folder and start scanning.
+ *
+ * In Electron: uses the OS-native dialog + native fs walk. The path is
+ * persisted in Electron's userData, so later boots can auto-restore
+ * without any picker, permission prompt, or user interaction.
+ *
+ * In the browser: falls back to showDirectoryPicker. If that API isn't
+ * available the caller should fall back to a plain file input.
+ *
+ * Returns false if no folder-picker API is available.
+ */
 export async function selectFolder(): Promise<boolean> {
   if (state.scanning) return true
+
+  // Electron native FS takes priority — no permission model, reconnects
+  // silently after refresh.
+  if (isElectronNativeLibraryAvailable()) {
+    try {
+      const lib = await pickElectronLibrary()
+      if (!lib) return true // user cancelled
+      await processElectronFiles(lib.files)
+      return true
+    } catch (err) {
+      console.error('[selectFolder] Electron pick failed:', err)
+      state.scanning = false
+      notify()
+      return true
+    }
+  }
 
   if (typeof window !== 'undefined' && 'showDirectoryPicker' in window) {
     try {
@@ -260,6 +294,151 @@ export function reset() {
   if (!state.scanning) {
     state = { scanning: false, phase: 'finding', total: 0, current: 0, count: 0, currentFile: '', startTime: 0 }
     notify()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Electron-native path — build tracks from ElectronFileRef objects.
+//
+// Unlike the browser flow these entries already have absolute file paths,
+// so we don't need File objects or object URLs. Playback reads directly
+// from file:// URLs (webSecurity is disabled in the BrowserWindow config).
+// Metadata extraction that needs file bytes is skipped here; the renderer
+// can lazy-extract later on playback if needed. Postgres remains the
+// source of truth for metadata, so re-scanning an existing track doesn't
+// overwrite anything the user has already curated.
+// ---------------------------------------------------------------------------
+
+export async function processElectronFiles(refs: ElectronFileRef[]) {
+  state = {
+    scanning: true,
+    phase: 'finding',
+    total: refs.length,
+    current: 0,
+    count: 0,
+    currentFile: 'Checking library…',
+    startTime: Date.now(),
+  }
+  notify()
+
+  const existing = (await syncEngine.reconcile()) as Track[]
+
+  // Match Electron files to existing Postgres tracks by filename. Any
+  // unmatched files become new Track rows below.
+  const existingByFile = new Map<string, Track>()
+  for (const t of existing) {
+    if (t.file) existingByFile.set(t.file.toLowerCase(), t)
+  }
+
+  const newRefs: ElectronFileRef[] = []
+  const rematched: Track[] = []
+
+  for (const ref of refs) {
+    const hit = existingByFile.get(ref.name.toLowerCase())
+    if (hit) {
+      rematched.push({ ...hit, videoUrl: electronFileUrl(ref.path) })
+    } else {
+      newRefs.push(ref)
+    }
+  }
+
+  // Build Track objects for files we've never seen. No audio decode —
+  // tag extraction only happens if the user explicitly re-indexes later.
+  state.phase = 'processing'
+  state.total = newRefs.length
+  state.current = 0
+  state.currentFile = newRefs.length > 0 ? 'Registering new files…' : 'No new files'
+  notify()
+
+  const newTracks: Track[] = []
+  for (let i = 0; i < newRefs.length; i++) {
+    const ref = newRefs[i]
+    const title = ref.name.replace(VIDEO_EXTENSIONS, '')
+    newTracks.push({
+      id: crypto.randomUUID(),
+      title,
+      artist: '',
+      album: '',
+      remixer: '',
+      genre: '',
+      language: '',
+      bpm: 0,
+      key: '',
+      released: '',
+      duration: 0,
+      timesPlayed: 0,
+      thumbnail: '',
+      file: ref.name,
+      videoUrl: electronFileUrl(ref.path),
+    } as Track)
+
+    state.current = i + 1
+    state.count = rematched.length + newTracks.length
+    state.currentFile = title.slice(0, 37)
+    if (i % 50 === 0) notify()
+  }
+
+  state.phase = 'saving'
+  state.currentFile = `Saving ${newTracks.length} tracks…`
+  notify()
+
+  if (newTracks.length > 0 && syncEngine.getUserId()) {
+    await syncEngine.syncMetadata(newTracks)
+  }
+
+  // Every Postgres track that used to exist but didn't match a file on
+  // disk stays in the library with no videoUrl — it'll show "file
+  // missing" in the UI, not disappear.
+  const missing = existing
+    .filter((t) => !rematched.find((r) => r.id === t.id))
+    .map((t) => ({ ...t, videoUrl: undefined }))
+
+  const merged: Track[] = [...rematched, ...newTracks, ...missing]
+
+  state = {
+    scanning: false,
+    phase: 'done',
+    total: refs.length,
+    current: refs.length,
+    count: rematched.length + newTracks.length,
+    currentFile: '',
+    startTime: state.startTime,
+  }
+  notify()
+
+  if (onCompleteCallback) onCompleteCallback(merged)
+
+  const reconnectedCount = rematched.length
+  if (newTracks.length > 0) {
+    toast.success(
+      reconnectedCount > 0
+        ? `${newTracks.length} new + ${reconnectedCount} reconnected`
+        : `${newTracks.length} videos added`
+    )
+  } else if (reconnectedCount > 0) {
+    toast.success(`${reconnectedCount} tracks reconnected`)
+  }
+}
+
+/**
+ * Silently restore the previously-picked Electron library on boot.
+ * Returns true if a library was restored (the caller can stop showing
+ * the "select folder" UI), false if there was nothing to restore.
+ */
+export async function restoreElectronFolder(): Promise<boolean> {
+  if (!isElectronNativeLibraryAvailable()) return false
+  try {
+    const lib = await restoreElectronLibrary()
+    if (!lib || !lib.rootPath) return false
+    if (lib.missing) {
+      toast.warning('Saved music folder was not found — please re-select it')
+      return false
+    }
+    await processElectronFiles(lib.files)
+    return true
+  } catch (err) {
+    console.error('[restoreElectronFolder] failed:', err)
+    return false
   }
 }
 

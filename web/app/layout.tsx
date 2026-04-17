@@ -10,6 +10,13 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3030'),
   title: 'videoDJ.Studio — v1.0',
   description: 'AI-powered video DJ studio. Auto-mix, Dutch music filter, agent command bar.',
+  // Installing as a PWA is what lets Chrome grant persistent File System
+  // Access permissions — after install, queryPermission() returns 'granted'
+  // across page reloads, so the music folder stays connected without a
+  // re-pick. This ships the minimal manifest required for the install
+  // prompt to appear.
+  manifest: '/manifest.webmanifest',
+  themeColor: '#ffff00',
   icons: {
     icon: '/favicon.svg',
   },

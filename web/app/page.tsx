@@ -236,24 +236,83 @@ export default function Home() {
         const cloudTracks = await syncEngine.reconcile()
         console.log(`[restore] ${cloudTracks.length} tracks loaded from PostgreSQL`)
 
-        if (cloudTracks.length > 0) {
+        // Try silent auto-reconnect. Order matters:
+        //   1. Electron native FS — persistent path on disk, zero prompts.
+        //      This is the path Desktop App takes after the first pick,
+        //      and it runs even when Postgres is empty (e.g. fresh install
+        //      that still has a remembered folder).
+        //   2. Browser FileSystemDirectoryHandle with 'granted' permission
+        //      — works only inside the same browser session, unless the
+        //      user installed the PWA or clicked "Allow on every visit".
+        //   3. Banner prompts for a single-click re-grant, but only when
+        //      Postgres has tracks (otherwise the empty state already
+        //      offers a folder picker).
+        let autoConnected = false
+        const hasCloudTracks = cloudTracks.length > 0
+
+        if (hasCloudTracks) {
           setLibrary(cloudTracks as Track[])
           buildPlaylist()
+        }
 
-          // Try silent auto-reconnect (Chrome same session only)
-          let autoConnected = false
+        // (1) Electron native path — always try, regardless of Postgres
+        // state. If Postgres has tracks we match files against them; if
+        // Postgres is empty we register the files as new tracks.
+        try {
+          const { isElectronNativeLibraryAvailable, restoreElectronLibrary, electronFileUrl } =
+            await import('@/app/lib/electronLibrary')
+          if (isElectronNativeLibraryAvailable()) {
+            const lib = await restoreElectronLibrary()
+            if (lib && lib.rootPath && !lib.missing && lib.files.length > 0) {
+              if (hasCloudTracks) {
+                // Attach file:// URLs to existing Postgres tracks by name
+                const fileByName = new Map<string, (typeof lib.files)[number]>()
+                for (const f of lib.files) fileByName.set(f.name.toLowerCase(), f)
+                let matched = 0
+                const reconnected = (cloudTracks as Track[]).map((track) => {
+                  const hit = track.file ? fileByName.get(track.file.toLowerCase()) : null
+                  if (hit) { matched++; return { ...track, videoUrl: electronFileUrl(hit.path) } }
+                  return track
+                })
+                if (matched > 0) {
+                  setLibrary(reconnected as Track[])
+                  buildPlaylist()
+                  setFilesConnected(true)
+                  autoConnected = true
+                  console.log(`[restore] Electron reconnected ${matched}/${cloudTracks.length} tracks from ${lib.rootPath}`)
+                }
+              } else {
+                // Fresh Postgres + remembered folder → hand off to the
+                // scan pipeline so new tracks are registered.
+                const { processElectronFiles } = await import('@/app/lib/scanManager')
+                await processElectronFiles(lib.files)
+                setFilesConnected(true)
+                autoConnected = true
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[restore] Electron auto-reconnect failed:', err)
+        }
+
+        // (2) Browser FSA — only if Electron didn't handle it and we
+        // actually have tracks to reconnect
+        if (!autoConnected && hasCloudTracks) {
           try {
             const { loadDirectoryHandle, setFileRef } = await import('@/app/lib/db')
             const handle = await loadDirectoryHandle()
             if (handle) {
-              const permission = await (handle as any).queryPermission({ mode: 'read' })
+              const permission = await (handle as unknown as { queryPermission(o: { mode: 'read' }): Promise<string> }).queryPermission({ mode: 'read' })
               if (permission === 'granted') {
                 const files: File[] = []
                 const VIDEO_EXT = /\.(mp4|mkv|avi|mov|webm|m4v)$/i
                 async function walk(dir: FileSystemDirectoryHandle) {
-                  for await (const entry of (dir as any).values()) {
-                    if (entry.kind === 'file' && VIDEO_EXT.test(entry.name)) files.push(await entry.getFile())
-                    else if (entry.kind === 'directory') await walk(entry)
+                  for await (const entry of (dir as unknown as AsyncIterable<FileSystemHandle>)) {
+                    if (entry.kind === 'file' && VIDEO_EXT.test(entry.name)) {
+                      files.push(await (entry as FileSystemFileHandle).getFile())
+                    } else if (entry.kind === 'directory') {
+                      await walk(entry as FileSystemDirectoryHandle)
+                    }
                   }
                 }
                 await walk(handle)
@@ -273,11 +332,11 @@ export default function Home() {
               }
             }
           } catch { /* silent fail — banner will show */ }
+        }
 
-          // If auto-reconnect didn't work, show the connect banner
-          if (!autoConnected) {
-            setShowReconnectBanner(true)
-          }
+        // (3) Last resort — banner prompts the user to reconnect
+        if (!autoConnected && hasCloudTracks) {
+          setShowReconnectBanner(true)
         }
 
         // Fetch playlists from PostgreSQL

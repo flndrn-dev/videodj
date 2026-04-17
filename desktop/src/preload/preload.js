@@ -24,6 +24,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateAvailable: (cb) => ipcRenderer.on('update:available', (_, version) => cb(version)),
   onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_, version) => cb(version)),
 
+  // Music library — Electron's native FS path (replaces showDirectoryPicker
+  // so a page refresh/reboot restores the library without prompts).
+  library: {
+    pick: () => ipcRenderer.invoke('library:pick'),
+    restore: () => ipcRenderer.invoke('library:restore'),
+    forget: () => ipcRenderer.invoke('library:forget'),
+  },
+
   // Platform info
   platform: process.platform,
   isElectron: true,
