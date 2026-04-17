@@ -124,6 +124,26 @@ function getActiveTrack(deckA: DeckState, deckB: DeckState, crossfader: number):
 // Audio analysis commands (client-side)
 // ---------------------------------------------------------------------------
 
+// Resolve playable audio for a track across all source paths:
+//   1. In-memory File refs (browser picker path)
+//   2. Legacy IndexedDB blob store
+//   3. Track's videoUrl — works for both blob: URLs (web) and file://
+//      URLs (Electron native path), since fetch() can consume both when
+//      webSecurity is disabled in the BrowserWindow.
+// This is what makes BPM/key analysis actually work on Desktop App
+// tracks loaded from the Electron library, not just fresh browser picks.
+async function getTrackAudioBlob(track: Track): Promise<Blob | null> {
+  const stored = await getTrackBlob(track.id)
+  if (stored) return stored
+  if (track.videoUrl) {
+    try {
+      const res = await fetch(track.videoUrl)
+      if (res.ok) return await res.blob()
+    } catch { /* fall through */ }
+  }
+  return null
+}
+
 async function processFixBpm(
   library: Track[],
   onProgress?: (message: string) => void,
@@ -141,7 +161,7 @@ async function processFixBpm(
     const track = needsFix[i]
     onProgress?.(`Analyzing BPM... track ${i + 1}/${needsFix.length}: ${track.artist || 'Unknown'} - ${track.title}`)
 
-    const blob = await getTrackBlob(track.id)
+    const blob = await getTrackAudioBlob(track)
     if (!blob) {
       onProgress?.(`Skipping ${track.title} — no audio data stored`)
       continue
@@ -191,7 +211,7 @@ async function processFixKeys(
     const track = needsFix[i]
     onProgress?.(`Analyzing key... track ${i + 1}/${needsFix.length}: ${track.artist || 'Unknown'} - ${track.title}`)
 
-    const blob = await getTrackBlob(track.id)
+    const blob = await getTrackAudioBlob(track)
     if (!blob) {
       onProgress?.(`Skipping ${track.title} — no audio data stored`)
       continue
@@ -221,6 +241,90 @@ async function processFixKeys(
     passToAgent: false,
     reply: `Detected key for ${updates.length}/${needsFix.length} tracks:\n${summary}\n\nType "apply" to save these changes, or "cancel" to discard.`,
     pendingUpdates: updates,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// /fix all — one-shot metadata fix
+//
+// Rewritten in v1.0.5 to stop calling the LLM for metadata the LLM can't
+// actually know (album, genre, year, language for arbitrary tracks). The
+// previous flow sent 10-track batches to Linus up to 5× each, producing
+// "0 updated" for 12+ hours. The new flow:
+//
+//   1. MusicBrainz + Discogs (deterministic, free, 1 req/sec rate-limited)
+//      → album, genre, released year, language
+//   2. Local audio analysis
+//      → BPM (Web Audio decode) and key (Camelot) per track
+//
+// No retry loop — one pass, correct the first time. No LLM call. No 12-hour
+// runs. A 1640-track library should finish in ~30-45 minutes instead of
+// hitting MAX_ATTEMPTS=5 with zero output.
+// ---------------------------------------------------------------------------
+
+async function processFixAll(
+  library: Track[],
+  onProgress?: (message: string) => void,
+): Promise<CommandResult> {
+  if (library.length === 0) {
+    return { handled: true, passToAgent: false, reply: 'Library is empty — upload some tracks first.' }
+  }
+
+  onProgress?.(`Running /fix all on ${library.length} tracks — MusicBrainz + Discogs for album/genre/year, local audio analysis for BPM/key.`)
+
+  // 1. Metadata lookup (album, genre, released, language, artist fill-in)
+  onProgress?.('[1/3] Looking up album, genre, year, language on MusicBrainz + Discogs…')
+  const lookup = await processLookup(library, onProgress)
+  const lookupUpdates: PendingUpdate[] = lookup.pendingUpdates ?? []
+
+  // 2. BPM via Web Audio decode
+  onProgress?.(`[2/3] Analyzing BPM on tracks that are missing it…`)
+  const bpm = await processFixBpm(library, onProgress)
+  const bpmUpdates: PendingUpdate[] = bpm.pendingUpdates ?? []
+
+  // 3. Musical key via Camelot detector
+  onProgress?.(`[3/3] Analyzing musical key on tracks that are missing it…`)
+  const key = await processFixKeys(library, onProgress)
+  const keyUpdates: PendingUpdate[] = key.pendingUpdates ?? []
+
+  // Merge updates — a single track can get multiple fields from different
+  // passes. Later passes (bpm/key) overwrite any collision keys from the
+  // earlier lookup, which is the right precedence because BPM and key are
+  // measured, not looked up.
+  const merged = new Map<string, PendingUpdate>()
+  for (const u of [...lookupUpdates, ...bpmUpdates, ...keyUpdates]) {
+    const prev = merged.get(u.trackId)
+    if (prev) {
+      merged.set(u.trackId, { ...prev, changes: { ...prev.changes, ...u.changes } })
+    } else {
+      merged.set(u.trackId, { ...u })
+    }
+  }
+
+  const allUpdates = Array.from(merged.values())
+
+  if (allUpdates.length === 0) {
+    return {
+      handled: true,
+      passToAgent: false,
+      reply: `Ran /fix all on ${library.length} tracks — no new metadata found. MusicBrainz + Discogs had no matches and every track already has BPM + key.`,
+    }
+  }
+
+  const summary = allUpdates.slice(0, 20).map((u, i) => {
+    const fields = Object.entries(u.changes).map(([k, v]) => `${k}: ${v}`).join(', ')
+    return `${i + 1}. ${u.trackArtist || 'Unknown'} — ${u.trackTitle}: ${fields}`
+  }).join('\n')
+  const more = allUpdates.length > 20 ? `\n… and ${allUpdates.length - 20} more` : ''
+
+  return {
+    handled: true,
+    passToAgent: false,
+    reply:
+      `/fix all done — ${allUpdates.length} tracks to update ` +
+      `(${lookupUpdates.length} lookup, ${bpmUpdates.length} BPM, ${keyUpdates.length} key):\n` +
+      `${summary}${more}\n\nType "apply" to save, or "cancel" to discard.`,
+    pendingUpdates: allUpdates,
   }
 }
 
@@ -1119,16 +1223,23 @@ export async function processCommand(
       const fixArgs = command.replace(/^\/(fix-?\w*)\s*/i, '').trim().toLowerCase()
       const fixOptions = new Set(fixArgs.split(/\s+/).filter(w => w.length > 1))
 
+      // /fix all — the full combined fix. Runs MusicBrainz + Discogs for
+      // album/genre/year/language and local audio analysis for BPM + key.
+      // Never touches the LLM. See processFixAll for rationale.
+      if (cmd === '/fix-all' || fixOptions.has('all')) {
+        return processFixAll(library, onProgress)
+      }
+
       // If user typed only client-side options (bpm/keys only), handle locally
-      if ((cmd === '/fix-bpm' || (fixOptions.size === 1 && fixOptions.has('bpm'))) && !fixOptions.has('all')) {
+      if (cmd === '/fix-bpm' || (fixOptions.size === 1 && fixOptions.has('bpm'))) {
         return processFixBpm(library, onProgress)
       }
-      if ((cmd === '/fix-keys' || (fixOptions.size === 1 && (fixOptions.has('keys') || fixOptions.has('key')))) && !fixOptions.has('all')) {
+      if (cmd === '/fix-keys' || (fixOptions.size === 1 && (fixOptions.has('keys') || fixOptions.has('key')))) {
         return processFixKeys(library, onProgress)
       }
 
-      // Pass through to API with normalized command
-      // Convert "/fix genres language" → tells the batching system what to fix
+      // Pass through to API for the granular variants (/fix albums,
+      // /fix genres, etc.). These still go to the LLM batch pipeline.
       return { handled: false, passToAgent: true }
     }
 
@@ -1198,9 +1309,9 @@ export async function processCommand(
     case '/history':
       return { handled: true, passToAgent: false, reply: 'Opening set history...', action: 'show_set_history' }
 
-    // Pass-through to Claude API
+    // Pass-through to Claude API. NOTE: /fix-all is NOT here on purpose —
+    // it's handled locally via processFixAll above, not by the LLM.
     case '/scan':
-    case '/fix-all':
     case '/fix-titles':
     case '/fix-albums':
     case '/fix-genres':

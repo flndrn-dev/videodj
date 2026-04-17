@@ -96,7 +96,7 @@ export function Header({ languageFilter, onOpenSetup, onOpenStream, isLive, audi
           <div style={{ fontWeight: 900, fontSize: 17, letterSpacing: '-0.5px', lineHeight: 1 }}>
             video<span style={{ color: '#ffff00' }}>DJ</span>.Studio
           </div>
-          <div style={{ fontSize: 9, color: '#555570', fontFamily: 'var(--font-mono)', marginTop: 1, letterSpacing: 1 }}>v1.0.4</div>
+          <div style={{ fontSize: 9, color: '#555570', fontFamily: 'var(--font-mono)', marginTop: 1, letterSpacing: 1 }}>v1.0.5</div>
         </div>
       </div>
 
