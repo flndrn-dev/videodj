@@ -28,3 +28,9 @@ Thumbs.db
 
 # Temporary
 tmp/
+
+# Local project notes (kept on disk, not in repo)
+CLAUDE.md
+BUILD_PLAN.md
+GHOST.md
+PROJECT_STATUS.md
